@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #131619;
+  color: #ECEFF2;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid #4FB286;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Thin dark scrollbars for the ticker */
+.scroll-x {
+  scrollbar-width: thin;
+  scrollbar-color: #2C333B transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

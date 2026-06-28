@@ -1,0 +1,33 @@
+// Prisma schema. Auth users live in Supabase's auth.users table — we only store
+// the Supabase user id (a uuid) as `userId` and scope all rows to it in app code.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooled connection (PgBouncer) for queries
+  directUrl = env("DIRECT_URL")     // direct connection for migrations
+}
+
+model Holding {
+  id        String   @id @default(uuid())
+  userId    String
+  symbol    String // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
+  weight    Float
+  unit      String // ozt, g, kg
+  paid      Float? // optional total amount paid, in account currency
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PortfolioSnapshot {
+  id      String   @id @default(uuid())
+  userId  String
+  value   Float // total portfolio value at takenAt
+  takenAt DateTime @default(now())
+
+  @@index([userId, takenAt])
+}
