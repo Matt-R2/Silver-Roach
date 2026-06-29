@@ -1,1 +1,27 @@
-node_modules
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# environment files — NEVER commit these
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# prisma
+prisma/migrations/dev.db
+prisma/dev.db
+
+# build
+build/
+dist/
+
+# misc
+.DS_Store
+*.pem
+.vercel
