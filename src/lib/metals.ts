@@ -62,7 +62,7 @@ function firstRow(data: any): any {
 export type Spot = { symbol: string; currency: string; price: number | null };
 
 export async function getSpot(symbol: string, currency = "USD"): Promise<Spot> {
-  const url = `${BASE}/api/metal-quote?${SYMBOL_PARAM}=${symbol}&currency=${currency}`;
+  const url = `${BASE}/metal-quote?${SYMBOL_PARAM}=${symbol}&currency=${currency}`;
   const data = await fetchJson(url, 60_000); // 60s cache
   return { symbol, currency, price: pickNumber(firstRow(data), PRICE_KEYS) };
 }
@@ -91,7 +91,7 @@ export type Point = { period: "30d" | "60d" | "1y" | "5y"; price: number | null 
 // nulls for anything it can't find so the UI degrades gracefully.
 export async function getPoints(symbol: string, currency = "USD"): Promise<Point[]> {
   const ts = Math.floor(Date.now() / 1000);
-  const url = `${BASE}/api/historical-points?${SYMBOL_PARAM}=${symbol}&currency=${currency}&timestamp=${ts}`;
+  const url = `${BASE}/historical-points?${SYMBOL_PARAM}=${symbol}&currency=${currency}&timestamp=${ts}`;
   const data = await fetchJson(url, 6 * 60 * 60 * 1000); // 6h cache
   const rows: any[] = Array.isArray(data?.results) ? data.results : [];
 
@@ -118,7 +118,7 @@ export async function getHistory(
   startTime: number,
   endTime: number
 ): Promise<Candle[]> {
-  const url = `${BASE}/api/metal-history?${SYMBOL_PARAM}=${symbol}&currency=${currency}&startTime=${startTime}&endTime=${endTime}&limit=30`;
+  const url = `${BASE}/metal-history?${SYMBOL_PARAM}=${symbol}&currency=${currency}&startTime=${startTime}&endTime=${endTime}&limit=30`;
   const data = await fetchJson(url, 60 * 60 * 1000); // 1h cache
   const rows: any[] = Array.isArray(data?.results) ? data.results : [];
   return rows

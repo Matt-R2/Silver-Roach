@@ -88,7 +88,7 @@ export default function DashboardClient({
       <header className="flex items-baseline justify-between gap-4 flex-wrap mb-6">
         <div className="flex items-baseline gap-4 flex-wrap">
           <div className="font-display text-2xl font-bold tracking-[0.14em]">
-            ASSAY<span className="text-up">.</span>
+            SILVERROACH<span className="text-up">.</span>
           </div>
           <span className="text-sm text-muted">{email}</span>
         </div>
@@ -108,7 +108,7 @@ export default function DashboardClient({
             >
               <Chip symbol={t.symbol} />
               <span className="text-xs text-muted">{m.name}</span>
-              <span className="font-mono text-[13px]">{t.spot != null ? usd(t.spot) : "—"}</span>
+              <span className="font-mono text-[13px]">{t.spot != null && t.spot > 0 ? usd(t.spot) : "—"}</span>
             </div>
           );
         })}
@@ -249,13 +249,13 @@ function HoldingCard({ row: r }: { row: Row }) {
           <div className="font-semibold text-[15px]">{m.name}</div>
           <div className="font-mono text-[11.5px] text-muted">
             {num(r.ozt, 3)} troy oz <span className="text-dim mx-1">·</span> {num(r.weight, 2)} {UNIT_LABEL[r.unit]}
-            <span className="text-dim mx-1">·</span> {usd(r.spot)}/ozt
+            <span className="text-dim mx-1">·</span> {r.spot > 0 ? `${usd(r.spot)}/ozt` : "price unavailable"}
           </div>
         </div>
       </div>
 
       <div className="sm:text-right">
-        <div className="font-mono font-bold text-xl">{usd(r.value)}</div>
+        <div className="font-mono font-bold text-xl">{r.spot > 0 ? usd(r.value) : <span className="text-muted">—</span>}</div>
         <div className="flex gap-x-4 gap-y-1 flex-wrap sm:justify-end mt-1 text-xs items-baseline">
           {r.chg30Value != null && r.chg30Pct != null && (
             <span className="flex items-baseline gap-1.5">

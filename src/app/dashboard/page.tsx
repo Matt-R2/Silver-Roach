@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getSpots, getPoints } from "@/lib/metals";
 import { toTroyOz } from "@/lib/units";
-import { ALL_SYMBOLS } from "@/lib/metals-meta";
 import DashboardClient, { type Row, type SnapshotPoint } from "./dashboard-client";
 
 export const dynamic = "force-dynamic";
@@ -24,15 +23,24 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  // Spot for the metals actually held, plus the ticker defaults.
   const heldSymbols = Array.from(new Set(holdings.map((h) => h.symbol)));
-  const spotSymbols = Array.from(new Set([...heldSymbols, "AU", "AG", "PT", "PD"]));
-  const spots = await getSpots(spotSymbols);
+
+  // Read spot prices from the DB cache (written hourly by /api/cron/refresh-prices).
+  // Falls back to a live API call only if the cache is empty (first run before cron has fired).
+  const cachedRows = await prisma.metalSpotCache.findMany();
+  const spots: Record<string, number | null> = Object.fromEntries(
+    cachedRows.map((c: { symbol: string; priceUsd: number }) => [c.symbol, c.priceUsd])
+  );
+  if (cachedRows.length === 0) {
+    const fallbackSymbols = Array.from(new Set([...heldSymbols, "AU", "AG", "PT", "PD"]));
+    const liveSpots = await getSpots(fallbackSymbols);
+    Object.assign(spots, liveSpots);
+  }
 
   // 30d / 1y change points, only for held metals (skips quota when empty).
   const pointsBySymbol: Record<string, { p30: number | null; p1y: number | null }> = {};
   await Promise.all(
-    heldSymbols.map(async (s) => {
+    heldSymbols.map(async (s: string) => {
       try {
         const pts = await getPoints(s);
         pointsBySymbol[s] = {

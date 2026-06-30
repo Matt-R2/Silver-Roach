@@ -23,7 +23,17 @@ export async function GET(request: Request) {
   }
 
   const symbols = Array.from(new Set(holdings.map((h) => h.symbol)));
-  const spots = await getSpots(symbols); // USD
+
+  // Prefer DB cache; fall back to live API only for symbols not yet cached.
+  const cached = await prisma.metalSpotCache.findMany({ where: { symbol: { in: symbols } } });
+  const spots: Record<string, number | null> = Object.fromEntries(
+    cached.map((c: { symbol: string; priceUsd: number }) => [c.symbol, c.priceUsd])
+  );
+  const missing = symbols.filter((s) => spots[s] == null);
+  if (missing.length > 0) {
+    const live = await getSpots(missing);
+    Object.assign(spots, live);
+  }
 
   // Sum value per user.
   const valueByUser = new Map<string, number>();

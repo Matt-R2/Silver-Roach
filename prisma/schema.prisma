@@ -31,3 +31,9 @@ model PortfolioSnapshot {
 
   @@index([userId, takenAt])
 }
+
+model MetalSpotCache {
+  symbol    String   @id // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
+  priceUsd  Float
+  updatedAt DateTime @updatedAt
+}

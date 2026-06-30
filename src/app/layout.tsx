@@ -7,7 +7,7 @@ const sans = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Assay — precious metals tracker",
+  title: "SilverRoach — precious metals tracker",
   description: "Track the value of your gold, silver and platinum holdings over time.",
 };
 
