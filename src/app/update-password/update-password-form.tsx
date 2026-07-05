@@ -14,7 +14,7 @@ export function UpdatePasswordForm({ requireCurrentPassword }: { requireCurrentP
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="font-display text-3xl font-bold tracking-[0.14em] text-ink">
-            ASSAY<span className="text-up">.</span>
+            SILVER ROACH<span className="text-up">.</span>
           </div>
           <p className="mt-2 text-sm text-muted">Choose a new password.</p>
         </div>

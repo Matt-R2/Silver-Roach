@@ -15,7 +15,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="font-display text-3xl font-bold tracking-[0.14em] text-ink">
-            ASSAY<span className="text-up">.</span>
+            SILVER ROACH<span className="text-up">.</span>
           </div>
           <p className="mt-2 text-sm text-muted">Reset your password.</p>
         </div>

@@ -1,4 +1,4 @@
-# Assay — precious metals portfolio tracker
+# Silver Roach — precious metals portfolio tracker
 
 Track the value of your gold, silver, platinum and palladium holdings, see how
 each metal has moved over 30 days and 1 year, and watch your **total portfolio
