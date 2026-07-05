@@ -26,15 +26,38 @@ export default async function DashboardPage() {
   const heldSymbols = Array.from(new Set(holdings.map((h) => h.symbol)));
 
   // Read spot prices from the DB cache (written hourly by /api/cron/refresh-prices).
-  // Falls back to a live API call only if the cache is empty (first run before cron has fired).
+  // Falls back to a live API call when the cache is empty or stale (>90 min old),
+  // which covers local dev where the Vercel Cron never fires.
+  const STALE_MS = 90 * 60 * 1000;
   const cachedRows = await prisma.metalSpotCache.findMany();
   const spots: Record<string, number | null> = Object.fromEntries(
     cachedRows.map((c: { symbol: string; priceUsd: number }) => [c.symbol, c.priceUsd])
   );
-  if (cachedRows.length === 0) {
-    const fallbackSymbols = Array.from(new Set([...heldSymbols, "AU", "AG", "PT", "PD"]));
-    const liveSpots = await getSpots(fallbackSymbols);
+  const isStale =
+    cachedRows.length === 0 ||
+    cachedRows.some((c: { updatedAt: Date }) => Date.now() - c.updatedAt.getTime() > STALE_MS);
+  let pricesUpdatedAt: string;
+  if (isStale) {
+    const refreshSymbols = Array.from(new Set([...heldSymbols, "AU", "AG", "PT", "PD"]));
+    const liveSpots = await getSpots(refreshSymbols);
     Object.assign(spots, liveSpots);
+    await Promise.all(
+      Object.entries(liveSpots).map(async ([symbol, priceUsd]) => {
+        if (priceUsd == null) return;
+        await prisma.metalSpotCache.upsert({
+          where: { symbol },
+          update: { priceUsd },
+          create: { symbol, priceUsd },
+        });
+      })
+    );
+    pricesUpdatedAt = new Date().toISOString();
+  } else {
+    const newest = cachedRows.reduce(
+      (a: Date, c: { updatedAt: Date }) => (c.updatedAt > a ? c.updatedAt : a),
+      cachedRows[0].updatedAt
+    );
+    pricesUpdatedAt = newest.toISOString();
   }
 
   // 30d / 1y change points, only for held metals (skips quota when empty).
@@ -90,6 +113,7 @@ export default async function DashboardPage() {
       rows={rows}
       history={history}
       ticker={ticker}
+      pricesUpdatedAt={pricesUpdatedAt}
     />
   );
 }

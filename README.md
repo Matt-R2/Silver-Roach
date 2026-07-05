@@ -80,6 +80,11 @@ Open http://localhost:3000, create an account, add a holding.
 > signing in. You can turn confirmation off in **Authentication → Providers →
 > Email** while developing.
 
+> **Forgot password** emails a reset link (Supabase's default "Reset Password"
+> template using `{{ .ConfirmationURL }}` works as-is — no dashboard changes
+> needed). Just make sure `NEXT_PUBLIC_SITE_URL` below matches a Redirect URL
+> configured in **Supabase → Authentication → URL Configuration**.
+
 ### 7. Seed your first chart point
 
 The portfolio chart needs at least two snapshots. Trigger one manually:
@@ -95,7 +100,10 @@ Run it again later (or wait for the scheduled job) to see the line grow.
 1. Push to GitHub and import the repo in Vercel.
 2. Add all `.env` variables in **Project → Settings → Environment Variables**
    (including `CRON_SECRET` — Vercel Cron sends it automatically as a Bearer
-   token to the snapshot route).
+   token to the snapshot route). Set `NEXT_PUBLIC_SITE_URL` to your real
+   production domain (e.g. `https://yourapp.com`) — it's used to build the
+   password-reset email link, and must also be added as a Redirect URL in
+   **Supabase → Authentication → URL Configuration**.
 3. `vercel.json` already schedules the snapshot daily at 23:00 UTC. Adjust the
    cron expression there if you like.
 

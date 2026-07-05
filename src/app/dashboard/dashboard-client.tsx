@@ -51,11 +51,13 @@ export default function DashboardClient({
   rows,
   history,
   ticker,
+  pricesUpdatedAt,
 }: {
   email: string;
   rows: Row[];
   history: SnapshotPoint[];
   ticker: Ticker[];
+  pricesUpdatedAt: string;
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -98,7 +100,7 @@ export default function DashboardClient({
       </header>
 
       {/* Spot ticker */}
-      <div className="flex gap-2.5 overflow-x-auto pb-1.5 mb-6 scroll-x">
+      <div className="flex gap-2.5 overflow-x-auto pb-1.5 mb-1 scroll-x">
         {ticker.map((t) => {
           const m = METALS[t.symbol];
           return (
@@ -112,6 +114,11 @@ export default function DashboardClient({
             </div>
           );
         })}
+      </div>
+
+      <div className="text-[11px] text-dim mb-6" suppressHydrationWarning>
+        Prices as of {new Date(pricesUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        {" · "}{new Date(pricesUpdatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
       </div>
 
       {/* Vault summary */}

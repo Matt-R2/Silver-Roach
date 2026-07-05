@@ -1,12 +1,16 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { signIn, signUp } from "./actions";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const action = mode === "signin" ? signIn : signUp;
-  const [state, formAction, pending] = useActionState(action, null as null | { error?: string; message?: string });
+  const [state, formAction, pending] = useActionState<
+    { error?: string; message?: string } | null,
+    FormData
+  >(action, null);
 
   return (
     <main className="min-h-screen grid place-items-center px-5">
@@ -46,6 +50,11 @@ export default function LoginPage() {
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
               className="w-full rounded-lg border border-line bg-bg px-3 py-2.5 font-mono text-sm text-ink focus:border-up focus:outline-none"
             />
+            {mode === "signin" && (
+              <Link href="/forgot-password" className="block text-right text-xs text-muted hover:text-ink">
+                Forgot password?
+              </Link>
+            )}
           </div>
 
           {state?.error && <p className="text-sm text-down">{state.error}</p>}
