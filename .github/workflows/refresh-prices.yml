@@ -1,0 +1,21 @@
+name: Refresh spot prices
+
+on:
+  schedule:
+    - cron: "0 * * * *" # every hour, on the hour (UTC)
+  workflow_dispatch: {} # allow manual trigger from the Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call refresh-prices endpoint
+        run: |
+          response=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/refresh-prices")
+          cat /tmp/response.json
+          if [ "$response" -lt 200 ] || [ "$response" -ge 300 ]; then
+            echo "Request failed with status $response"
+            exit 1
+          fi
