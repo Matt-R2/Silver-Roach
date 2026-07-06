@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -61,6 +61,20 @@ export default function DashboardClient({
 }) {
   const [adding, setAdding] = useState(false);
 
+  // Computed client-side only: toLocaleTimeString/toLocaleDateString resolve
+  // against the server's timezone during SSR (Vercel runs in UTC), which
+  // doesn't match the visitor's local time. Deferring to an effect means the
+  // first client render matches the server-rendered markup exactly, then
+  // this fills in with the correct local time right after.
+  const [updatedAtLabel, setUpdatedAtLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pricesUpdatedAt) return;
+    const d = new Date(pricesUpdatedAt);
+    setUpdatedAtLabel(
+      `${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${d.toLocaleDateString([], { month: "short", day: "numeric" })}`
+    );
+  }, [pricesUpdatedAt]);
+
   const totals = useMemo(() => {
     const value = rows.reduce((a, r) => a + r.value, 0);
     const chg30 = rows.reduce((a, r) => a + (r.chg30Value ?? 0), 0);
@@ -116,15 +130,8 @@ export default function DashboardClient({
         })}
       </div>
 
-      <div className="text-[11px] text-dim mb-6" suppressHydrationWarning>
-        {pricesUpdatedAt ? (
-          <>
-            Prices as of {new Date(pricesUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-            {" · "}{new Date(pricesUpdatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
-          </>
-        ) : (
-          "Prices not yet available"
-        )}
+      <div className="text-[11px] text-dim mb-6">
+        {!pricesUpdatedAt ? "Prices not yet available" : updatedAtLabel ? `Prices as of ${updatedAtLabel}` : " "}
       </div>
 
       {/* Vault summary */}
