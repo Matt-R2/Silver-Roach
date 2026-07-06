@@ -37,3 +37,10 @@ model MetalSpotCache {
   priceUsd  Float
   updatedAt DateTime @updatedAt
 }
+
+model MetalPointsCache {
+  symbol    String   @id // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
+  p30Usd    Float?
+  p1yUsd    Float?
+  updatedAt DateTime @updatedAt
+}

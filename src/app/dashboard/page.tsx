@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { getSpots, getPoints } from "@/lib/metals";
 import { toTroyOz } from "@/lib/units";
 import DashboardClient, { type Row, type SnapshotPoint } from "./dashboard-client";
 
@@ -25,55 +24,28 @@ export default async function DashboardPage() {
 
   const heldSymbols = Array.from(new Set(holdings.map((h) => h.symbol)));
 
-  // Read spot prices from the DB cache (written hourly by /api/cron/refresh-prices).
-  // Falls back to a live API call when the cache is empty or stale (>90 min old),
-  // which covers local dev where the Vercel Cron never fires.
-  const STALE_MS = 90 * 60 * 1000;
-  const cachedRows = await prisma.metalSpotCache.findMany();
+  // Spot + change-point prices are only ever written by /api/cron/refresh-prices
+  // (see vercel.json for the schedule). The dashboard never calls the live API
+  // itself — every metal is its own upstream API call, so doing that per
+  // page-load would blow through the monthly quota.
+  const [cachedRows, pointsRows] = await Promise.all([
+    prisma.metalSpotCache.findMany(),
+    prisma.metalPointsCache.findMany({ where: { symbol: { in: heldSymbols } } }),
+  ]);
   const spots: Record<string, number | null> = Object.fromEntries(
     cachedRows.map((c: { symbol: string; priceUsd: number }) => [c.symbol, c.priceUsd])
   );
-  const isStale =
-    cachedRows.length === 0 ||
-    cachedRows.some((c: { updatedAt: Date }) => Date.now() - c.updatedAt.getTime() > STALE_MS);
-  let pricesUpdatedAt: string;
-  if (isStale) {
-    const refreshSymbols = Array.from(new Set([...heldSymbols, "AU", "AG", "PT", "PD"]));
-    const liveSpots = await getSpots(refreshSymbols);
-    Object.assign(spots, liveSpots);
-    await Promise.all(
-      Object.entries(liveSpots).map(async ([symbol, priceUsd]) => {
-        if (priceUsd == null) return;
-        await prisma.metalSpotCache.upsert({
-          where: { symbol },
-          update: { priceUsd },
-          create: { symbol, priceUsd },
-        });
-      })
-    );
-    pricesUpdatedAt = new Date().toISOString();
-  } else {
-    const newest = cachedRows.reduce(
-      (a: Date, c: { updatedAt: Date }) => (c.updatedAt > a ? c.updatedAt : a),
-      cachedRows[0].updatedAt
-    );
-    pricesUpdatedAt = newest.toISOString();
-  }
+  const pricesUpdatedAt: string | null = cachedRows.length
+    ? cachedRows
+        .reduce((a: Date, c: { updatedAt: Date }) => (c.updatedAt > a ? c.updatedAt : a), cachedRows[0].updatedAt)
+        .toISOString()
+    : null;
 
-  // 30d / 1y change points, only for held metals (skips quota when empty).
-  const pointsBySymbol: Record<string, { p30: number | null; p1y: number | null }> = {};
-  await Promise.all(
-    heldSymbols.map(async (s: string) => {
-      try {
-        const pts = await getPoints(s);
-        pointsBySymbol[s] = {
-          p30: pts.find((p) => p.period === "30d")?.price ?? null,
-          p1y: pts.find((p) => p.period === "1y")?.price ?? null,
-        };
-      } catch {
-        pointsBySymbol[s] = { p30: null, p1y: null };
-      }
-    })
+  const pointsBySymbol: Record<string, { p30: number | null; p1y: number | null }> = Object.fromEntries(
+    pointsRows.map((r: { symbol: string; p30Usd: number | null; p1yUsd: number | null }) => [
+      r.symbol,
+      { p30: r.p30Usd, p1y: r.p1yUsd },
+    ])
   );
 
   const rows: Row[] = holdings.map((h) => {

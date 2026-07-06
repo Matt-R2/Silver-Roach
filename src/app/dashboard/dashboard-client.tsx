@@ -57,7 +57,7 @@ export default function DashboardClient({
   rows: Row[];
   history: SnapshotPoint[];
   ticker: Ticker[];
-  pricesUpdatedAt: string;
+  pricesUpdatedAt: string | null;
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -117,8 +117,14 @@ export default function DashboardClient({
       </div>
 
       <div className="text-[11px] text-dim mb-6" suppressHydrationWarning>
-        Prices as of {new Date(pricesUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-        {" · "}{new Date(pricesUpdatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+        {pricesUpdatedAt ? (
+          <>
+            Prices as of {new Date(pricesUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            {" · "}{new Date(pricesUpdatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+          </>
+        ) : (
+          "Prices not yet available"
+        )}
       </div>
 
       {/* Vault summary */}

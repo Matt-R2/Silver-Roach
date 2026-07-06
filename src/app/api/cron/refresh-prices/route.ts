@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSpots } from "@/lib/metals";
+import { getSpots, getPoints } from "@/lib/metals";
 import { ALL_SYMBOLS } from "@/lib/metals-meta";
 
 // GET /api/cron/refresh-prices
-// Fetches spot prices for all 10 metals and upserts them into MetalSpotCache.
-// Runs hourly via Vercel Cron. Dashboard and snapshot routes read from the cache
-// instead of hitting the API directly, keeping quota usage predictable.
+// The ONLY place that calls the live Metal Sentinel API. Every metal is its own
+// API call upstream (no bulk endpoint), so this runs on a fixed 90-minute
+// schedule (see .github/workflows/refresh-prices.yml) rather than per page-load,
+// to stay well under the monthly quota. Fetches spot + 30d/1y change prices for
+// all 10 metals and upserts them into MetalSpotCache / MetalPointsCache.
+// Dashboard and snapshot routes only ever read these caches.
 export async function GET(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
   const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : null;
@@ -17,14 +20,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const spots = await getSpots([...ALL_SYMBOLS]);
+  const symbols = [...ALL_SYMBOLS];
 
-  const results = { updated: [] as string[], failed: [] as string[] };
+  const spots = await getSpots(symbols);
+  const results = { updatedSpot: [] as string[], failedSpot: [] as string[], updatedPoints: [] as string[] };
 
   await Promise.all(
-    Object.entries(spots).map(async ([symbol, priceUsd]) => {
+    symbols.map(async (symbol) => {
+      const priceUsd = spots[symbol];
       if (priceUsd == null) {
-        results.failed.push(symbol);
+        results.failedSpot.push(symbol);
         return;
       }
       await prisma.metalSpotCache.upsert({
@@ -32,9 +37,27 @@ export async function GET(request: Request) {
         update: { priceUsd },
         create: { symbol, priceUsd },
       });
-      results.updated.push(symbol);
+      results.updatedSpot.push(symbol);
     })
   );
 
-  return NextResponse.json({ ok: true, ...results, at: new Date().toISOString() });
+  await Promise.all(
+    symbols.map(async (symbol) => {
+      try {
+        const pts = await getPoints(symbol);
+        const p30Usd = pts.find((p) => p.period === "30d")?.price ?? null;
+        const p1yUsd = pts.find((p) => p.period === "1y")?.price ?? null;
+        await prisma.metalPointsCache.upsert({
+          where: { symbol },
+          update: { p30Usd, p1yUsd },
+          create: { symbol, p30Usd, p1yUsd },
+        });
+        results.updatedPoints.push(symbol);
+      } catch {
+        // Leave the previously cached value in place rather than failing the run.
+      }
+    })
+  );
+
+  return NextResponse.json({ ok: true, symbols, ...results, at: new Date().toISOString() });
 }
