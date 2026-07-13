@@ -12,13 +12,18 @@ datasource db {
 }
 
 model Holding {
-  id        String   @id @default(uuid())
-  userId    String
-  symbol    String // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
-  weight    Float
-  unit      String // ozt, g, kg
-  paid      Float? // optional total amount paid, in account currency
-  createdAt DateTime @default(now())
+  id         String    @id @default(uuid())
+  userId     String
+  symbol     String // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
+  weight     Float // weight per piece
+  unit       String // ozt, g, kg
+  quantity   Int       @default(1) // number of pieces; total weight = weight * quantity
+  purity     Float     @default(1) // fraction 0-1 of fine metal content (24k gold / .999 fine = 1)
+  nickname   String? // optional suffix shown after the metal name, e.g. "Coins"
+  note       String? // optional free-text note, only shown when editing
+  paid       Float? // optional total amount paid, in account currency
+  acquiredAt DateTime? // optional date the holding was acquired
+  createdAt  DateTime  @default(now())
 
   @@index([userId])
 }

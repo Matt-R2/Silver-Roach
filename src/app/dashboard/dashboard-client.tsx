@@ -11,9 +11,9 @@ import {
   CartesianGrid,
 } from "recharts";
 import { METALS } from "@/lib/metals-meta";
-import { UNIT_LABEL } from "@/lib/units";
+import { UNIT_LABEL, purityOptionsFor, formatPurity } from "@/lib/units";
 import { usd, num, pct } from "@/lib/units";
-import { addHolding, deleteHolding } from "./actions";
+import { addHolding, deleteHolding, updateHolding } from "./actions";
 import { signOut } from "../login/actions";
 
 export type Row = {
@@ -21,7 +21,12 @@ export type Row = {
   symbol: string;
   weight: number;
   unit: string;
+  quantity: number;
+  purity: number;
+  nickname: string | null;
+  note: string | null;
   paid: number | null;
+  acquiredAt: string | null;
   ozt: number;
   spot: number;
   value: number;
@@ -101,6 +106,43 @@ export default function DashboardClient({
 
   return (
     <main className="mx-auto max-w-5xl px-5 sm:px-8 py-7 pb-16">
+      <style>{`
+        .ms-input {
+          font-family: var(--font-mono); font-size: 14px; color: #ECEFF2;
+          background: #131619; border: 1px solid #2C333B; border-radius: 8px;
+          padding: 9px 11px; min-width: 120px;
+        }
+        .ms-input:focus { border-color: #4FB286; outline: none; }
+
+        .ms-pill-input {
+          font-family: var(--font-sans, inherit); font-size: 13.5px; color: #DFF3E8;
+          background: #142A22; border: 1.5px solid #2E6B52; border-radius: 9999px;
+          padding: 9px 18px; min-width: 160px; text-align: center;
+          height: 40px; box-sizing: border-box;
+          transition: height 0.15s ease, border-radius 0.15s ease;
+        }
+        .ms-pill-input::placeholder { color: #598F76; }
+        .ms-pill-input:focus {
+          border-color: #4FB286; outline: none;
+          box-shadow: 0 0 0 3px rgba(79, 178, 134, 0.28);
+        }
+
+        /* Note starts as a single line like the Label pill, then opens into a
+           small rounded box while focused so there's room to write more. */
+        textarea.ms-pill-input {
+          resize: none; line-height: 1.4; overflow-y: hidden;
+        }
+        textarea.ms-pill-input:focus {
+          height: 92px; border-radius: 18px; overflow-y: auto;
+        }
+        textarea.ms-pill-input {
+          scrollbar-width: thin; scrollbar-color: #2E6B52 transparent;
+        }
+        textarea.ms-pill-input::-webkit-scrollbar { width: 6px; }
+        textarea.ms-pill-input::-webkit-scrollbar-track { background: transparent; }
+        textarea.ms-pill-input::-webkit-scrollbar-thumb { background: #2E6B52; border-radius: 999px; }
+        textarea.ms-pill-input::-webkit-scrollbar-thumb:hover { background: #4FB286; }
+      `}</style>
       <header className="flex items-baseline justify-between gap-4 flex-wrap mb-6">
         <div className="flex items-baseline gap-4 flex-wrap">
           <div className="font-display text-2xl font-bold tracking-[0.14em]">
@@ -260,17 +302,33 @@ function Chip({ symbol }: { symbol: string }) {
 
 function HoldingCard({ row: r }: { row: Row }) {
   const m = METALS[r.symbol];
+  const isAlloyed = r.purity < 0.999;
+  const [editing, setEditing] = useState(false);
+  const acquired = r.acquiredAt
+    ? new Date(r.acquiredAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+    : null;
   return (
-    <article className="relative grid items-center gap-4 rounded-2xl border border-hair bg-panel pl-5 pr-11 py-4 overflow-hidden sm:grid-cols-[1.4fr_1fr]">
+    <article className="relative grid items-center gap-4 rounded-2xl border border-hair bg-panel pl-5 pr-20 py-4 overflow-hidden sm:grid-cols-[1.4fr_1fr]">
       <span className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: m.color, opacity: 0.85 }} />
       <div className="flex items-center gap-3">
         <Chip symbol={r.symbol} />
         <div>
-          <div className="font-semibold text-[15px]">{m.name}</div>
+          <div className="font-semibold text-[15px] flex items-center gap-1.5 flex-wrap">
+            {m.name}
+            {r.nickname && <span className="text-muted font-normal">– {r.nickname}</span>}
+            {r.quantity > 1 && <span className="text-muted font-normal">× {r.quantity}</span>}
+            {isAlloyed && (
+              <span className="rounded-full border border-hair px-1.5 py-0.5 text-[10px] font-mono text-muted">
+                {formatPurity(r.symbol, r.purity)}
+              </span>
+            )}
+          </div>
           <div className="font-mono text-[11.5px] text-muted">
-            {num(r.ozt, 3)} troy oz <span className="text-dim mx-1">·</span> {num(r.weight, 2)} {UNIT_LABEL[r.unit]}
+            {num(r.ozt, 3)} troy oz fine <span className="text-dim mx-1">·</span> {num(r.weight, 2)} {UNIT_LABEL[r.unit]}
+            {r.quantity > 1 ? ` ea` : ""}
             <span className="text-dim mx-1">·</span> {r.spot > 0 ? `${usd(r.spot)}/ozt` : "price unavailable"}
           </div>
+          {acquired && <div className="font-mono text-[10.5px] text-dim mt-0.5">Acquired {acquired}</div>}
         </div>
       </div>
 
@@ -297,20 +355,87 @@ function HoldingCard({ row: r }: { row: Row }) {
         )}
       </div>
 
-      <form action={deleteHolding} className="absolute top-3 right-3">
-        <input type="hidden" name="id" value={r.id} />
+      <div className="absolute top-3 right-3 flex gap-1.5">
         <button
-          aria-label="Remove holding"
-          className="grid place-items-center w-6 h-6 rounded-md border border-hair text-dim hover:text-down hover:border-down"
+          type="button"
+          aria-label="Edit holding"
+          onClick={() => setEditing((v) => !v)}
+          className={`grid place-items-center w-6 h-6 rounded-md border text-[13px] ${
+            editing ? "border-ink text-ink" : "border-hair text-dim hover:text-ink hover:border-ink"
+          }`}
         >
-          ×
+          ✎
         </button>
-      </form>
+        <form
+          action={deleteHolding}
+          onSubmit={(e) => {
+            if (!confirm(`Remove ${num(r.weight, 2)} ${UNIT_LABEL[r.unit]} of ${m.name}? This can't be undone.`)) {
+              e.preventDefault();
+            }
+          }}
+        >
+          <input type="hidden" name="id" value={r.id} />
+          <button
+            aria-label="Remove holding"
+            className="grid place-items-center w-6 h-6 rounded-md border border-hair text-dim hover:text-down hover:border-down"
+          >
+            ×
+          </button>
+        </form>
+      </div>
+
+      {editing && (
+        <form
+          action={async (fd) => {
+            await updateHolding(fd);
+            setEditing(false);
+          }}
+          className="sm:col-span-2 flex flex-wrap items-end gap-3.5 rounded-xl border border-line bg-raised px-4 py-3.5"
+        >
+          <input type="hidden" name="id" value={r.id} />
+          <Field label="Label (optional)">
+            <input
+              name="nickname"
+              defaultValue={r.nickname ?? ""}
+              placeholder={`e.g. Coins`}
+              maxLength={40}
+              className="ms-pill-input"
+              style={{ minWidth: 160 }}
+            />
+          </Field>
+          <Field label="Note (optional)">
+            <textarea
+              name="note"
+              defaultValue={r.note ?? ""}
+              placeholder="Any details worth remembering..."
+              maxLength={280}
+              rows={1}
+              className="ms-pill-input"
+              style={{ minWidth: 260, textAlign: "left" }}
+            />
+          </Field>
+          <div className="flex gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-lg border border-line px-3.5 py-2 text-[13px] text-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button type="submit" className="rounded-lg bg-ink px-3.5 py-2 text-[13px] font-semibold text-bg hover:opacity-90">
+              Save
+            </button>
+          </div>
+        </form>
+      )}
     </article>
   );
 }
 
 function AddForm({ onClose }: { onClose: () => void }) {
+  const [symbol, setSymbol] = useState("AG");
+  const purityOptions = useMemo(() => purityOptionsFor(symbol), [symbol]);
+
   return (
     <form
       action={async (fd) => {
@@ -320,7 +445,12 @@ function AddForm({ onClose }: { onClose: () => void }) {
       className="flex flex-wrap items-end gap-3.5 rounded-2xl border border-line bg-raised px-5 py-4 mb-4"
     >
       <Field label="Metal">
-        <select name="symbol" defaultValue="AG" className="ms-input">
+        <select
+          name="symbol"
+          value={symbol}
+          onChange={(e) => setSymbol(e.target.value)}
+          className="ms-input"
+        >
           {Object.keys(METALS).map((s) => (
             <option key={s} value={s}>
               {METALS[s].name}
@@ -328,7 +458,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
           ))}
         </select>
       </Field>
-      <Field label="Weight">
+      <Field label="Weight per piece">
         <input name="weight" type="number" min="0" step="any" placeholder="0.00" required className="ms-input" />
       </Field>
       <Field label="Unit">
@@ -337,6 +467,21 @@ function AddForm({ onClose }: { onClose: () => void }) {
           <option value="g">grams</option>
           <option value="kg">kilograms</option>
         </select>
+      </Field>
+      <Field label="Quantity">
+        <input name="quantity" type="number" min="1" step="1" defaultValue="1" className="ms-input" style={{ minWidth: 80 }} />
+      </Field>
+      <Field label={symbol === "AU" ? "Purity (karat)" : "Purity (fineness)"}>
+        <select name="purity" defaultValue="1" key={symbol} className="ms-input" style={{ minWidth: 150 }}>
+          {purityOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Date acquired (optional)">
+        <input name="acquiredAt" type="date" max={new Date().toISOString().slice(0, 10)} className="ms-input" />
       </Field>
       <Field label="Amount paid (optional)">
         <input name="paid" type="number" min="0" step="any" placeholder="total $" className="ms-input" />
@@ -349,15 +494,6 @@ function AddForm({ onClose }: { onClose: () => void }) {
           Add
         </button>
       </div>
-
-      <style>{`
-        .ms-input {
-          font-family: var(--font-mono); font-size: 14px; color: #ECEFF2;
-          background: #131619; border: 1px solid #2C333B; border-radius: 8px;
-          padding: 9px 11px; min-width: 120px;
-        }
-        .ms-input:focus { border-color: #4FB286; outline: none; }
-      `}</style>
     </form>
   );
 }

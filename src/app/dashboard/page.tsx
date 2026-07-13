@@ -49,7 +49,9 @@ export default async function DashboardPage() {
   );
 
   const rows: Row[] = holdings.map((h) => {
-    const ozt = toTroyOz(h.weight, h.unit);
+    // ozt is the fine (pure) troy-oz content: per-piece weight × piece count × purity.
+    // Bullion defaults to purity 1, so this matches the prior weight×quantity behavior.
+    const ozt = toTroyOz(h.weight, h.unit) * h.quantity * h.purity;
     const spot = spots[h.symbol] ?? 0;
     const value = ozt * spot;
     const p30 = pointsBySymbol[h.symbol]?.p30 ?? null;
@@ -59,7 +61,12 @@ export default async function DashboardPage() {
       symbol: h.symbol,
       weight: h.weight,
       unit: h.unit,
+      quantity: h.quantity,
+      purity: h.purity,
+      nickname: h.nickname,
+      note: h.note,
       paid: h.paid,
+      acquiredAt: h.acquiredAt ? h.acquiredAt.toISOString() : null,
       ozt,
       spot,
       value,
