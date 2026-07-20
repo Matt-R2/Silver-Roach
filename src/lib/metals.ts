@@ -86,28 +86,29 @@ export async function getSpots(
 
 export type Point = { period: "30d" | "60d" | "1y" | "5y"; price: number | null };
 
-// /api/historical-points returns snapshots at 30d, 60d, 1y and 5y before `timestamp`.
-// Shape of the result rows is unconfirmed; this maps defensively and returns
-// nulls for anything it can't find so the UI degrades gracefully.
+// /api/historical-points returns { now, thirtyDay, sixtyDay, oneYear, fiveYear },
+// each an { ask, bid, mid, ... } quote. `mid` is 0 on the historical entries
+// (confirmed live — looks like Metal Sentinel just doesn't compute it for
+// anything but `now`), so prefer mid only when it's actually populated and
+// fall back to the ask/bid midpoint.
+function priceOf(row: any): number | null {
+  if (typeof row?.mid === "number" && row.mid > 0) return row.mid;
+  if (typeof row?.ask === "number" && typeof row?.bid === "number" && row.ask > 0 && row.bid > 0) {
+    return (row.ask + row.bid) / 2;
+  }
+  return pickNumber(row, PRICE_KEYS);
+}
+
 export async function getPoints(symbol: string, currency = "USD"): Promise<Point[]> {
   const ts = Math.floor(Date.now() / 1000);
   const url = `${BASE}/historical-points?${SYMBOL_PARAM}=${symbol}&currency=${currency}&timestamp=${ts}`;
   const data = await fetchJson(url, 6 * 60 * 60 * 1000); // 6h cache
-  const rows: any[] = Array.isArray(data?.results) ? data.results : [];
-
-  // Try to match each known period to a row by a label-ish field, else fall back
-  // to positional order [30d, 60d, 1y, 5y].
-  const order: Point["period"][] = ["30d", "60d", "1y", "5y"];
-  const labelKeys = ["period", "label", "range", "window"];
-  const labelOf = (r: any) => {
-    for (const k of labelKeys) if (typeof r?.[k] === "string") return String(r[k]).toLowerCase();
-    return "";
-  };
-  return order.map((period, i) => {
-    const byLabel = rows.find((r) => labelOf(r).includes(period.replace("y", "")) && labelOf(r).includes(period.includes("y") ? "y" : "d"));
-    const row = byLabel ?? rows[i] ?? null;
-    return { period, price: pickNumber(row, PRICE_KEYS) };
-  });
+  return [
+    { period: "30d", price: priceOf(data?.thirtyDay) },
+    { period: "60d", price: priceOf(data?.sixtyDay) },
+    { period: "1y", price: priceOf(data?.oneYear) },
+    { period: "5y", price: priceOf(data?.fiveYear) },
+  ];
 }
 
 export type Candle = { t: number; price: number };

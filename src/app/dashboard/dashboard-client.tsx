@@ -9,6 +9,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import { METALS } from "@/lib/metals-meta";
 import { UNIT_LABEL, purityOptionsFor, formatPurity } from "@/lib/units";
@@ -39,6 +42,8 @@ export type Row = {
 };
 
 export type SnapshotPoint = { t: string; value: number };
+export type CompositionSlice = { symbol: string; value: number };
+export type WeightSlice = { symbol: string; ozt: number };
 type Ticker = { symbol: string; spot: number | null };
 
 function Delta({ value, percent }: { value: number; percent: number }) {
@@ -55,12 +60,16 @@ export default function DashboardClient({
   email,
   rows,
   history,
+  composition,
+  weightComposition,
   ticker,
   pricesUpdatedAt,
 }: {
   email: string;
   rows: Row[];
   history: SnapshotPoint[];
+  composition: CompositionSlice[];
+  weightComposition: WeightSlice[];
   ticker: Ticker[];
   pricesUpdatedAt: string | null;
 }) {
@@ -200,9 +209,9 @@ export default function DashboardClient({
         </div>
       </section>
 
-      {/* Portfolio value over time */}
+      {/* Value over time */}
       <section className="rounded-2xl border border-hair bg-panel p-5 mb-7">
-        <div className="text-[11px] uppercase tracking-[0.12em] text-dim mb-4">Portfolio value over time</div>
+        <div className="text-[11px] uppercase tracking-[0.12em] text-dim mb-4">Your holdings, valued over time</div>
         {chartData.length >= 2 ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -234,11 +243,27 @@ export default function DashboardClient({
           </div>
         ) : (
           <p className="text-sm text-muted py-10 text-center">
-            Your value chart fills in as daily snapshots accumulate. The first one is written by the snapshot job —
-            run it once (see README) or wait for the scheduled run.
+            This chart prices your current holdings against each day&apos;s metal prices, so it fills in as price
+            history accumulates. Trigger the price job once (see README) or wait for the scheduled run.
           </p>
         )}
       </section>
+
+      {/* Composition */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-7">
+        <CompositionCard
+          title="Composition by worth"
+          slices={composition.map((c) => ({ symbol: c.symbol, amount: c.value }))}
+          formatTooltip={(v) => usd(v)}
+          formatAmount={(v, total) => `${total ? num((v / total) * 100, 1) : "0.0"}%`}
+        />
+        <CompositionCard
+          title="Composition by weight"
+          slices={weightComposition.map((w) => ({ symbol: w.symbol, amount: w.ozt }))}
+          formatTooltip={(v) => `${num(v, 3)} troy oz fine`}
+          formatAmount={(v) => `${num(v, 3)} oz`}
+        />
+      </div>
 
       {/* Holdings */}
       <section>
@@ -279,6 +304,63 @@ export default function DashboardClient({
         Spot prices via Metal Sentinel (Kitco), quoted per troy ounce. Not investment advice.
       </footer>
     </main>
+  );
+}
+
+function CompositionCard({
+  title,
+  slices,
+  formatTooltip,
+  formatAmount,
+}: {
+  title: string;
+  slices: { symbol: string; amount: number }[];
+  formatTooltip: (v: number) => string;
+  formatAmount: (v: number, total: number) => string;
+}) {
+  const total = slices.reduce((a, s) => a + s.amount, 0);
+  return (
+    <section className="rounded-2xl border border-hair bg-panel p-5">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-dim mb-4">{title}</div>
+      {slices.length > 0 ? (
+        <div className="flex items-center gap-4">
+          <div className="w-[40%] h-40 flex-none">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={slices}
+                  dataKey="amount"
+                  nameKey="symbol"
+                  innerRadius={44}
+                  outerRadius={68}
+                  paddingAngle={2}
+                  stroke="none"
+                >
+                  {slices.map((s) => (
+                    <Cell key={s.symbol} fill={METALS[s.symbol].color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#1B1F24", border: "1px solid #2C333B", borderRadius: 10, fontFamily: "var(--font-mono)" }}
+                  formatter={(v: number, _n, entry) => [formatTooltip(v), METALS[entry.payload.symbol]?.name ?? entry.payload.symbol]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-col gap-2 flex-1 min-w-0">
+            {slices.map((s) => (
+              <div key={s.symbol} className="flex items-center gap-2 text-xs">
+                <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: METALS[s.symbol].color }} />
+                <span className="text-muted truncate">{METALS[s.symbol].name}</span>
+                <span className="font-mono ml-auto">{formatAmount(s.amount, total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted py-10 text-center">Add a holding to see your composition.</p>
+      )}
+    </section>
   );
 }
 

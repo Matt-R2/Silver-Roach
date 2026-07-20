@@ -12,15 +12,15 @@ server-side proxy, so your API key never reaches the browser.
 - **Next.js 15** (App Router) + **React 19** + **TypeScript**
 - **Tailwind CSS**
 - **Supabase Auth** (email + password)
-- **Postgres + Prisma** (holdings and daily value snapshots)
-- **Recharts** (portfolio-value chart)
-- **Vercel Cron** (daily snapshot job)
+- **Postgres + Prisma** (holdings and daily metal price history)
+- **Recharts** (value-over-time and composition charts)
+- **Vercel Cron** (daily price snapshot job)
 
 ## How it fits together
 
 ```
 Browser ──▶ Next.js (your server)
-              ├─ Server Components / Actions ──▶ Prisma ──▶ Postgres (holdings, snapshots)
+              ├─ Server Components / Actions ──▶ Prisma ──▶ Postgres (holdings, price history)
               ├─ /api/metals/* ──┐
               └─ /api/cron/snapshot ──┐
                                       └──▶ Metal Sentinel (RapidAPI)   [key stays here]
@@ -29,9 +29,11 @@ Browser ──▶ Next.js (your server)
 - **Holdings & history** live in Postgres, scoped to the Supabase user id.
 - **Spot prices** are fetched server-side; the `RAPIDAPI_KEY` is never shipped to
   the client.
-- **Portfolio over time** is built from `PortfolioSnapshot` rows. The cron job
-  writes one row per user per day at current spot — the API gives metal prices,
-  not what *your* stack was worth last week, so we record it ourselves.
+- **Value over time** is built from `MetalPriceSnapshot` rows — one row per
+  held metal per day, written by the cron job at current spot. The dashboard
+  prices *today's* holdings against that history, so a holding you added and
+  later deleted never shows up as a phantom spike: it just has zero weight,
+  today and in the past.
 
 ## Setup
 
@@ -87,7 +89,7 @@ Open http://localhost:3000, create an account, add a holding.
 
 ### 7. Seed your first chart point
 
-The portfolio chart needs at least two snapshots. Trigger one manually:
+The value chart needs at least two days of price history. Trigger a snapshot manually:
 
 ```bash
 curl -H "authorization: Bearer YOUR_CRON_SECRET" http://localhost:3000/api/cron/snapshot

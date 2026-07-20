@@ -28,13 +28,13 @@ model Holding {
   @@index([userId])
 }
 
-model PortfolioSnapshot {
-  id      String   @id @default(uuid())
-  userId  String
-  value   Float // total portfolio value at takenAt
-  takenAt DateTime @default(now())
+model MetalPriceSnapshot {
+  id       String   @id @default(uuid())
+  symbol   String // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
+  priceUsd Float // spot price per troy oz at takenAt
+  takenAt  DateTime @default(now())
 
-  @@index([userId, takenAt])
+  @@index([symbol, takenAt])
 }
 
 model MetalSpotCache {

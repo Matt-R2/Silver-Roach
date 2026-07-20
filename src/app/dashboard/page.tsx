@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { toTroyOz } from "@/lib/units";
-import DashboardClient, { type Row, type SnapshotPoint } from "./dashboard-client";
+import DashboardClient, { type Row, type SnapshotPoint, type CompositionSlice, type WeightSlice } from "./dashboard-client";
 
 export const dynamic = "force-dynamic";
+
+const HISTORY_LOOKBACK_DAYS = 400;
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -13,14 +15,7 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [holdings, snapshots] = await Promise.all([
-    prisma.holding.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
-    prisma.portfolioSnapshot.findMany({
-      where: { userId: user.id },
-      orderBy: { takenAt: "asc" },
-      take: 365,
-    }),
-  ]);
+  const holdings = await prisma.holding.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
 
   const heldSymbols = Array.from(new Set(holdings.map((h) => h.symbol)));
 
@@ -28,9 +23,16 @@ export default async function DashboardPage() {
   // (see vercel.json for the schedule). The dashboard never calls the live API
   // itself — every metal is its own upstream API call, so doing that per
   // page-load would blow through the monthly quota.
-  const [cachedRows, pointsRows] = await Promise.all([
+  const [cachedRows, pointsRows, priceSnapshots] = await Promise.all([
     prisma.metalSpotCache.findMany(),
     prisma.metalPointsCache.findMany({ where: { symbol: { in: heldSymbols } } }),
+    prisma.metalPriceSnapshot.findMany({
+      where: {
+        symbol: { in: heldSymbols },
+        takenAt: { gte: new Date(Date.now() - HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { takenAt: "asc" },
+    }),
   ]);
   const spots: Record<string, number | null> = Object.fromEntries(
     cachedRows.map((c: { symbol: string; priceUsd: number }) => [c.symbol, c.priceUsd])
@@ -79,10 +81,70 @@ export default async function DashboardPage() {
     };
   });
 
-  const history: SnapshotPoint[] = snapshots.map((s) => ({
-    t: s.takenAt.toISOString(),
-    value: s.value,
-  }));
+  // Chart is a fixed-weight price index: today's fine-oz holdings per symbol,
+  // priced at each historical day. A holding added and later deleted has zero
+  // weight today, so it never appears in the history — no phantom spike.
+  const weightBySymbol: Record<string, number> = {};
+  for (const r of rows) {
+    weightBySymbol[r.symbol] = (weightBySymbol[r.symbol] ?? 0) + r.ozt;
+  }
+
+  const pricesByDay = new Map<string, Record<string, number>>();
+  for (const s of priceSnapshots) {
+    const day = s.takenAt.toISOString().slice(0, 10);
+    const bucket = pricesByDay.get(day) ?? {};
+    bucket[s.symbol] = s.priceUsd;
+    pricesByDay.set(day, bucket);
+  }
+
+  const dailyPoints: SnapshotPoint[] = Array.from(pricesByDay.entries())
+    .filter(([, prices]) => heldSymbols.length > 0 && heldSymbols.every((s) => prices[s] != null))
+    .map(([day, prices]) => ({
+      t: new Date(`${day}T00:00:00.000Z`).toISOString(),
+      value: heldSymbols.reduce((sum, s) => sum + weightBySymbol[s] * prices[s], 0),
+    }))
+    .sort((a, b) => a.t.localeCompare(b.t));
+
+  // Bootstrap a couple of anchor points from the 30d/1y change-point cache so
+  // the chart isn't empty while daily history accumulates. Only used to fill
+  // in *before* real daily history starts.
+  const bootstrap: SnapshotPoint[] = [];
+  if (heldSymbols.length > 0 && heldSymbols.every((s) => pointsBySymbol[s]?.p1y != null)) {
+    const t = new Date();
+    t.setUTCFullYear(t.getUTCFullYear() - 1);
+    bootstrap.push({
+      t: t.toISOString(),
+      value: heldSymbols.reduce((sum, s) => sum + weightBySymbol[s] * (pointsBySymbol[s].p1y as number), 0),
+    });
+  }
+  if (heldSymbols.length > 0 && heldSymbols.every((s) => pointsBySymbol[s]?.p30 != null)) {
+    const t = new Date();
+    t.setUTCDate(t.getUTCDate() - 30);
+    bootstrap.push({
+      t: t.toISOString(),
+      value: heldSymbols.reduce((sum, s) => sum + weightBySymbol[s] * (pointsBySymbol[s].p30 as number), 0),
+    });
+  }
+
+  const earliestDaily = dailyPoints[0]?.t;
+  const history: SnapshotPoint[] = [
+    ...bootstrap.filter((b) => !earliestDaily || b.t < earliestDaily),
+    ...dailyPoints,
+  ].sort((a, b) => a.t.localeCompare(b.t));
+
+  const compositionMap = new Map<string, number>();
+  for (const r of rows) {
+    compositionMap.set(r.symbol, (compositionMap.get(r.symbol) ?? 0) + r.value);
+  }
+  const composition: CompositionSlice[] = Array.from(compositionMap.entries())
+    .filter(([, value]) => value > 0)
+    .map(([symbol, value]) => ({ symbol, value }))
+    .sort((a, b) => b.value - a.value);
+
+  const weightComposition: WeightSlice[] = Object.entries(weightBySymbol)
+    .filter(([, ozt]) => ozt > 0)
+    .map(([symbol, ozt]) => ({ symbol, ozt }))
+    .sort((a, b) => b.ozt - a.ozt);
 
   const ticker = ["AU", "AG", "PT", "PD"].map((s) => ({ symbol: s, spot: spots[s] ?? null }));
 
@@ -91,6 +153,8 @@ export default async function DashboardPage() {
       email={user.email ?? ""}
       rows={rows}
       history={history}
+      composition={composition}
+      weightComposition={weightComposition}
       ticker={ticker}
       pricesUpdatedAt={pricesUpdatedAt}
     />

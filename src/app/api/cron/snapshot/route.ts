@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSpots } from "@/lib/metals";
-import { toTroyOz } from "@/lib/units";
 
 // GET /api/cron/snapshot
-// Writes a daily portfolio-value snapshot for every user who has holdings.
+// Writes one daily price row per held metal symbol (not per user/portfolio).
+// Dashboards recompute each user's history from these prices against their
+// *current* holdings, so a holding someone added and later deleted never
+// shows up as a phantom spike in anyone's chart.
 // Protected by CRON_SECRET. Vercel Cron sends it automatically as a Bearer token;
 // you can also call it manually:  curl -H "authorization: Bearer $CRON_SECRET" .../api/cron/snapshot
 export async function GET(request: Request) {
@@ -17,9 +19,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const holdings = await prisma.holding.findMany();
+  const holdings = await prisma.holding.findMany({ select: { symbol: true } });
   if (holdings.length === 0) {
-    return NextResponse.json({ ok: true, users: 0, note: "No holdings to snapshot" });
+    return NextResponse.json({ ok: true, symbols: 0, note: "No holdings to snapshot" });
   }
 
   const symbols = Array.from(new Set(holdings.map((h) => h.symbol)));
@@ -35,22 +37,15 @@ export async function GET(request: Request) {
     Object.assign(spots, live);
   }
 
-  // Sum value per user.
-  const valueByUser = new Map<string, number>();
-  for (const h of holdings) {
-    const spot = spots[h.symbol] ?? 0;
-    const value = toTroyOz(h.weight, h.unit) * spot;
-    valueByUser.set(h.userId, (valueByUser.get(h.userId) ?? 0) + value);
-  }
+  const rows = symbols
+    .filter((s) => spots[s] != null)
+    .map((symbol) => ({ symbol, priceUsd: spots[symbol] as number }));
 
-  await prisma.portfolioSnapshot.createMany({
-    data: Array.from(valueByUser.entries()).map(([userId, value]) => ({ userId, value })),
-  });
+  await prisma.metalPriceSnapshot.createMany({ data: rows });
 
   return NextResponse.json({
     ok: true,
-    users: valueByUser.size,
-    symbols,
+    symbols: rows.map((r) => r.symbol),
     at: new Date().toISOString(),
   });
 }
