@@ -21,8 +21,6 @@ model Holding {
   purity     Float     @default(1) // fraction 0-1 of fine metal content (24k gold / .999 fine = 1)
   nickname   String? // optional suffix shown after the metal name, e.g. "Coins"
   note       String? // optional free-text note, only shown when editing
-  paid       Float? // optional total amount paid, in account currency
-  acquiredAt DateTime? // optional date the holding was acquired
   createdAt  DateTime  @default(now())
 
   @@index([userId])
@@ -48,4 +46,11 @@ model MetalPointsCache {
   p30Usd    Float?
   p1yUsd    Float?
   updatedAt DateTime @updatedAt
+}
+
+model Profile {
+  userId      String   @id // Supabase auth user id
+  displayName String?
+  theme       String   @default("dark") // "dark" | "light"
+  updatedAt   DateTime @updatedAt
 }

@@ -3,13 +3,41 @@
 @tailwind utilities;
 
 :root {
+  --color-bg: #131619;
+  --color-panel: #1B1F24;
+  --color-raised: #21262D;
+  --color-line: #2C333B;
+  --color-hair: #242A31;
+  --color-ink: #ECEFF2;
+  --color-muted: #8A929C;
+  --color-dim: #5C646E;
+  --color-pill-bg: #142A22;
+  --color-pill-border: #2E6B52;
+  --color-pill-text: #DFF3E8;
+  --color-pill-placeholder: #598F76;
   color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --color-bg: #F5F6F7;
+  --color-panel: #FFFFFF;
+  --color-raised: #F7F8F9;
+  --color-line: #DDE1E6;
+  --color-hair: #E7EAED;
+  --color-ink: #14171A;
+  --color-muted: #5C646E;
+  --color-dim: #8A929C;
+  --color-pill-bg: #E9F5EE;
+  --color-pill-border: #8FCBAA;
+  --color-pill-text: #1D5A3F;
+  --color-pill-placeholder: #6FA98A;
+  color-scheme: light;
 }
 
 html,
 body {
-  background: #131619;
-  color: #ECEFF2;
+  background: var(--color-bg);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -24,10 +52,10 @@ body {
   border-radius: 6px;
 }
 
-/* Thin dark scrollbars for the ticker */
+/* Thin scrollbars for the ticker */
 .scroll-x {
   scrollbar-width: thin;
-  scrollbar-color: #2C333B transparent;
+  scrollbar-color: var(--color-line) transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

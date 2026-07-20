@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -16,7 +18,7 @@ import {
 import { METALS } from "@/lib/metals-meta";
 import { UNIT_LABEL, purityOptionsFor, formatPurity } from "@/lib/units";
 import { usd, num, pct } from "@/lib/units";
-import { addHolding, deleteHolding, updateHolding } from "./actions";
+import { addHolding, deleteHolding, updateHolding, renameHolding } from "./actions";
 import { signOut } from "../login/actions";
 
 export type Row = {
@@ -28,8 +30,6 @@ export type Row = {
   purity: number;
   nickname: string | null;
   note: string | null;
-  paid: number | null;
-  acquiredAt: string | null;
   ozt: number;
   spot: number;
   value: number;
@@ -37,8 +37,6 @@ export type Row = {
   chg30Pct: number | null;
   chg1yValue: number | null;
   chg1yPct: number | null;
-  gain: number | null;
-  gainPct: number | null;
 };
 
 export type SnapshotPoint = { t: string; value: number };
@@ -58,6 +56,7 @@ function Delta({ value, percent }: { value: number; percent: number }) {
 
 export default function DashboardClient({
   email,
+  displayName,
   rows,
   history,
   composition,
@@ -66,6 +65,7 @@ export default function DashboardClient({
   pricesUpdatedAt,
 }: {
   email: string;
+  displayName: string;
   rows: Row[];
   history: SnapshotPoint[];
   composition: CompositionSlice[];
@@ -92,15 +92,10 @@ export default function DashboardClient({
   const totals = useMemo(() => {
     const value = rows.reduce((a, r) => a + r.value, 0);
     const chg30 = rows.reduce((a, r) => a + (r.chg30Value ?? 0), 0);
-    const cost = rows.reduce((a, r) => a + (r.paid ?? 0), 0);
-    const gain = rows.filter((r) => r.gain != null).reduce((a, r) => a + (r.gain ?? 0), 0);
     return {
       value,
       chg30,
       chg30Pct: value - chg30 ? chg30 / (value - chg30) : 0,
-      gain,
-      gainPct: cost ? gain / cost : 0,
-      hasCost: cost > 0,
     };
   }, [rows]);
 
@@ -117,20 +112,20 @@ export default function DashboardClient({
     <main className="mx-auto max-w-5xl px-5 sm:px-8 py-7 pb-16">
       <style>{`
         .ms-input {
-          font-family: var(--font-mono); font-size: 14px; color: #ECEFF2;
-          background: #131619; border: 1px solid #2C333B; border-radius: 8px;
+          font-family: var(--font-mono); font-size: 14px; color: var(--color-ink);
+          background: var(--color-bg); border: 1px solid var(--color-line); border-radius: 8px;
           padding: 9px 11px; min-width: 120px;
         }
         .ms-input:focus { border-color: #4FB286; outline: none; }
 
         .ms-pill-input {
-          font-family: var(--font-sans, inherit); font-size: 13.5px; color: #DFF3E8;
-          background: #142A22; border: 1.5px solid #2E6B52; border-radius: 9999px;
+          font-family: var(--font-sans, inherit); font-size: 13.5px; color: var(--color-pill-text);
+          background: var(--color-pill-bg); border: 1.5px solid var(--color-pill-border); border-radius: 9999px;
           padding: 9px 18px; min-width: 160px; text-align: center;
           height: 40px; box-sizing: border-box;
           transition: height 0.15s ease, border-radius 0.15s ease;
         }
-        .ms-pill-input::placeholder { color: #598F76; }
+        .ms-pill-input::placeholder { color: var(--color-pill-placeholder); }
         .ms-pill-input:focus {
           border-color: #4FB286; outline: none;
           box-shadow: 0 0 0 3px rgba(79, 178, 134, 0.28);
@@ -145,11 +140,11 @@ export default function DashboardClient({
           height: 92px; border-radius: 18px; overflow-y: auto;
         }
         textarea.ms-pill-input {
-          scrollbar-width: thin; scrollbar-color: #2E6B52 transparent;
+          scrollbar-width: thin; scrollbar-color: var(--color-pill-border) transparent;
         }
         textarea.ms-pill-input::-webkit-scrollbar { width: 6px; }
         textarea.ms-pill-input::-webkit-scrollbar-track { background: transparent; }
-        textarea.ms-pill-input::-webkit-scrollbar-thumb { background: #2E6B52; border-radius: 999px; }
+        textarea.ms-pill-input::-webkit-scrollbar-thumb { background: var(--color-pill-border); border-radius: 999px; }
         textarea.ms-pill-input::-webkit-scrollbar-thumb:hover { background: #4FB286; }
       `}</style>
       <header className="flex items-baseline justify-between gap-4 flex-wrap mb-6">
@@ -157,11 +152,16 @@ export default function DashboardClient({
           <div className="font-display text-2xl font-bold tracking-[0.14em]">
             SILVERROACH<span className="text-up">.</span>
           </div>
-          <span className="text-sm text-muted">{email}</span>
+          <span className="text-sm text-muted">{displayName || email}</span>
         </div>
-        <form action={signOut}>
-          <button className="text-sm text-muted hover:text-ink">Sign out</button>
-        </form>
+        <div className="flex items-center gap-4">
+          <Link href="/profile" className="text-muted hover:text-ink" aria-label="Profile settings">
+            <Settings size={16} />
+          </Link>
+          <form action={signOut}>
+            <button className="text-sm text-muted hover:text-ink">Sign out</button>
+          </form>
+        </div>
       </header>
 
       {/* Spot ticker */}
@@ -198,14 +198,6 @@ export default function DashboardClient({
               <Delta value={totals.chg30} percent={totals.chg30Pct} />
             </div>
           </div>
-          {totals.hasCost && (
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.12em] text-dim mb-1.5">Unrealized · vs cost</div>
-              <div className="font-mono text-[15px]">
-                <Delta value={totals.gain} percent={totals.gainPct} />
-              </div>
-            </div>
-          )}
         </div>
       </section>
 
@@ -222,10 +214,10 @@ export default function DashboardClient({
                     <stop offset="100%" stopColor="#4FB286" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#242A31" vertical={false} />
-                <XAxis dataKey="date" stroke="#5C646E" fontSize={11} tickLine={false} axisLine={false} minTickGap={28} />
+                <CartesianGrid stroke="var(--color-hair)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--color-dim)" fontSize={11} tickLine={false} axisLine={false} minTickGap={28} />
                 <YAxis
-                  stroke="#5C646E"
+                  stroke="var(--color-dim)"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
@@ -233,8 +225,8 @@ export default function DashboardClient({
                   tickFormatter={(v) => `$${num(v / 1000, 1)}k`}
                 />
                 <Tooltip
-                  contentStyle={{ background: "#1B1F24", border: "1px solid #2C333B", borderRadius: 10, fontFamily: "var(--font-mono)" }}
-                  labelStyle={{ color: "#8A929C" }}
+                  contentStyle={{ background: "var(--color-panel)", border: "1px solid var(--color-line)", borderRadius: 10, fontFamily: "var(--font-mono)" }}
+                  labelStyle={{ color: "var(--color-muted)" }}
                   formatter={(v: number) => [usd(v), "Value"]}
                 />
                 <Area type="monotone" dataKey="value" stroke="#4FB286" strokeWidth={2} fill="url(#pv)" />
@@ -341,7 +333,7 @@ function CompositionCard({
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ background: "#1B1F24", border: "1px solid #2C333B", borderRadius: 10, fontFamily: "var(--font-mono)" }}
+                  contentStyle={{ background: "var(--color-panel)", border: "1px solid var(--color-line)", borderRadius: 10, fontFamily: "var(--font-mono)" }}
                   formatter={(v: number, _n, entry) => [formatTooltip(v), METALS[entry.payload.symbol]?.name ?? entry.payload.symbol]}
                 />
               </PieChart>
@@ -382,13 +374,63 @@ function Chip({ symbol }: { symbol: string }) {
   );
 }
 
+function NicknameInline({ id, nickname }: { id: string; nickname: string | null }) {
+  const [editing, setEditing] = useState(false);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        title="Click to rename"
+        aria-label="Rename holding"
+        onClick={() => setEditing(true)}
+        className="text-dim hover:text-ink text-[11px]"
+      >
+        ✎
+      </button>
+    );
+  }
+
+  return (
+    <form
+      action={async (fd) => {
+        await renameHolding(fd);
+        setEditing(false);
+      }}
+      className="inline-flex items-center gap-1"
+    >
+      <input type="hidden" name="id" value={id} />
+      <input
+        name="nickname"
+        defaultValue={nickname ?? ""}
+        placeholder="e.g. Coins"
+        maxLength={40}
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
+        className="rounded-md border border-line bg-bg px-2 py-1 text-[12.5px] font-mono text-ink focus:border-up focus:outline-none"
+        style={{ minWidth: 110 }}
+      />
+      <button type="submit" aria-label="Save name" className="grid place-items-center w-5 h-5 rounded text-up hover:opacity-80">
+        ✓
+      </button>
+      <button
+        type="button"
+        aria-label="Cancel rename"
+        onClick={() => setEditing(false)}
+        className="grid place-items-center w-5 h-5 rounded text-dim hover:text-ink"
+      >
+        ×
+      </button>
+    </form>
+  );
+}
+
 function HoldingCard({ row: r }: { row: Row }) {
   const m = METALS[r.symbol];
   const isAlloyed = r.purity < 0.999;
   const [editing, setEditing] = useState(false);
-  const acquired = r.acquiredAt
-    ? new Date(r.acquiredAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
-    : null;
+
   return (
     <article className="relative grid items-center gap-4 rounded-2xl border border-hair bg-panel pl-5 pr-20 py-4 overflow-hidden sm:grid-cols-[1.4fr_1fr]">
       <span className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: m.color, opacity: 0.85 }} />
@@ -398,6 +440,7 @@ function HoldingCard({ row: r }: { row: Row }) {
           <div className="font-semibold text-[15px] flex items-center gap-1.5 flex-wrap">
             {m.name}
             {r.nickname && <span className="text-muted font-normal">– {r.nickname}</span>}
+            <NicknameInline id={r.id} nickname={r.nickname} />
             {r.quantity > 1 && <span className="text-muted font-normal">× {r.quantity}</span>}
             {isAlloyed && (
               <span className="rounded-full border border-hair px-1.5 py-0.5 text-[10px] font-mono text-muted">
@@ -410,7 +453,7 @@ function HoldingCard({ row: r }: { row: Row }) {
             {r.quantity > 1 ? ` ea` : ""}
             <span className="text-dim mx-1">·</span> {r.spot > 0 ? `${usd(r.spot)}/ozt` : "price unavailable"}
           </div>
-          {acquired && <div className="font-mono text-[10.5px] text-dim mt-0.5">Acquired {acquired}</div>}
+          {r.note && <div className="font-mono text-[10.5px] text-dim mt-0.5 max-w-[36ch] truncate">{r.note}</div>}
         </div>
       </div>
 
@@ -430,11 +473,6 @@ function HoldingCard({ row: r }: { row: Row }) {
             </span>
           )}
         </div>
-        {r.gain != null && r.gainPct != null && (
-          <div className={`font-mono text-[11px] mt-1 ${r.gain >= 0 ? "text-up" : "text-down"}`}>
-            {r.gain >= 0 ? "Up" : "Down"} {usd(Math.abs(r.gain))} ({pct(r.gainPct)}) vs {usd(r.paid ?? 0)} paid
-          </div>
-        )}
       </div>
 
       <div className="absolute top-3 right-3 flex gap-1.5">
@@ -475,27 +513,14 @@ function HoldingCard({ row: r }: { row: Row }) {
           className="sm:col-span-2 flex flex-wrap items-end gap-3.5 rounded-xl border border-line bg-raised px-4 py-3.5"
         >
           <input type="hidden" name="id" value={r.id} />
-          <Field label="Label (optional)">
-            <input
-              name="nickname"
-              defaultValue={r.nickname ?? ""}
-              placeholder={`e.g. Coins`}
-              maxLength={40}
-              className="ms-pill-input"
-              style={{ minWidth: 160 }}
-            />
-          </Field>
-          <Field label="Note (optional)">
-            <textarea
-              name="note"
-              defaultValue={r.note ?? ""}
-              placeholder="Any details worth remembering..."
-              maxLength={280}
-              rows={1}
-              className="ms-pill-input"
-              style={{ minWidth: 260, textAlign: "left" }}
-            />
-          </Field>
+          <HoldingFields
+            defaultSymbol={r.symbol}
+            defaultWeight={r.weight}
+            defaultUnit={r.unit}
+            defaultQuantity={r.quantity}
+            defaultPurity={r.purity}
+          />
+          <NoteField defaultValue={r.note ?? ""} />
           <div className="flex gap-2 ml-auto">
             <button
               type="button"
@@ -515,9 +540,6 @@ function HoldingCard({ row: r }: { row: Row }) {
 }
 
 function AddForm({ onClose }: { onClose: () => void }) {
-  const [symbol, setSymbol] = useState("AG");
-  const purityOptions = useMemo(() => purityOptionsFor(symbol), [symbol]);
-
   return (
     <form
       action={async (fd) => {
@@ -526,48 +548,8 @@ function AddForm({ onClose }: { onClose: () => void }) {
       }}
       className="flex flex-wrap items-end gap-3.5 rounded-2xl border border-line bg-raised px-5 py-4 mb-4"
     >
-      <Field label="Metal">
-        <select
-          name="symbol"
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
-          className="ms-input"
-        >
-          {Object.keys(METALS).map((s) => (
-            <option key={s} value={s}>
-              {METALS[s].name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Weight per piece">
-        <input name="weight" type="number" min="0" step="any" placeholder="0.00" required className="ms-input" />
-      </Field>
-      <Field label="Unit">
-        <select name="unit" defaultValue="ozt" className="ms-input">
-          <option value="ozt">troy oz</option>
-          <option value="g">grams</option>
-          <option value="kg">kilograms</option>
-        </select>
-      </Field>
-      <Field label="Quantity">
-        <input name="quantity" type="number" min="1" step="1" defaultValue="1" className="ms-input" style={{ minWidth: 80 }} />
-      </Field>
-      <Field label={symbol === "AU" ? "Purity (karat)" : "Purity (fineness)"}>
-        <select name="purity" defaultValue="1" key={symbol} className="ms-input" style={{ minWidth: 150 }}>
-          {purityOptions.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Date acquired (optional)">
-        <input name="acquiredAt" type="date" max={new Date().toISOString().slice(0, 10)} className="ms-input" />
-      </Field>
-      <Field label="Amount paid (optional)">
-        <input name="paid" type="number" min="0" step="any" placeholder="total $" className="ms-input" />
-      </Field>
+      <HoldingFields />
+      <NoteField />
       <div className="flex gap-2 ml-auto">
         <button type="button" onClick={onClose} className="rounded-lg border border-line px-3.5 py-2 text-[13px] text-muted hover:text-ink">
           Cancel
@@ -577,6 +559,114 @@ function AddForm({ onClose }: { onClose: () => void }) {
         </button>
       </div>
     </form>
+  );
+}
+
+function HoldingFields({
+  defaultSymbol = "AG",
+  defaultWeight,
+  defaultUnit = "ozt",
+  defaultQuantity = 1,
+  defaultPurity = 1,
+}: {
+  defaultSymbol?: string;
+  defaultWeight?: number;
+  defaultUnit?: string;
+  defaultQuantity?: number;
+  defaultPurity?: number;
+}) {
+  const [symbol, setSymbol] = useState(defaultSymbol);
+  const purityOptions = useMemo(() => purityOptionsFor(symbol), [symbol]);
+
+  return (
+    <>
+      <Field label="Metal">
+        <select name="symbol" value={symbol} onChange={(e) => setSymbol(e.target.value)} className="ms-input">
+          {Object.keys(METALS).map((s) => (
+            <option key={s} value={s}>
+              {METALS[s].name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Weight per piece">
+        <input
+          name="weight"
+          type="number"
+          min="0"
+          step="any"
+          defaultValue={defaultWeight}
+          placeholder="0.00"
+          required
+          className="ms-input"
+        />
+      </Field>
+      <Field label="Unit">
+        <select name="unit" defaultValue={defaultUnit} className="ms-input">
+          <option value="ozt">troy oz</option>
+          <option value="g">grams</option>
+          <option value="kg">kilograms</option>
+        </select>
+      </Field>
+      <Field label="Quantity">
+        <input
+          name="quantity"
+          type="number"
+          min="1"
+          step="1"
+          defaultValue={defaultQuantity}
+          className="ms-input"
+          style={{ minWidth: 80 }}
+        />
+      </Field>
+      <Field label={symbol === "AU" ? "Purity (karat)" : "Purity (fineness)"}>
+        <select name="purity" defaultValue={defaultPurity} key={symbol} className="ms-input" style={{ minWidth: 150 }}>
+          {purityOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </>
+  );
+}
+
+function NoteField({ defaultValue }: { defaultValue?: string }) {
+  const [open, setOpen] = useState(!!defaultValue);
+  // Only steal focus when the user just revealed the field themselves —
+  // not when it starts open because the holding already has a note (that'd
+  // fight the rename pencil for focus when both start "open" at once).
+  const [justOpened, setJustOpened] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+          setJustOpened(true);
+        }}
+        className="text-xs text-muted hover:text-ink underline decoration-dotted underline-offset-4"
+      >
+        + Add note
+      </button>
+    );
+  }
+
+  return (
+    <Field label="Note (optional)">
+      <textarea
+        name="note"
+        defaultValue={defaultValue ?? ""}
+        placeholder="Any details worth remembering..."
+        maxLength={280}
+        rows={1}
+        autoFocus={justOpened}
+        className="ms-pill-input"
+        style={{ minWidth: 260, textAlign: "left" }}
+      />
+    </Field>
   );
 }
 

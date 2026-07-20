@@ -15,7 +15,10 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const holdings = await prisma.holding.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
+  const [holdings, profile] = await Promise.all([
+    prisma.holding.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
+    prisma.profile.findUnique({ where: { userId: user.id }, select: { displayName: true } }),
+  ]);
 
   const heldSymbols = Array.from(new Set(holdings.map((h) => h.symbol)));
 
@@ -67,8 +70,6 @@ export default async function DashboardPage() {
       purity: h.purity,
       nickname: h.nickname,
       note: h.note,
-      paid: h.paid,
-      acquiredAt: h.acquiredAt ? h.acquiredAt.toISOString() : null,
       ozt,
       spot,
       value,
@@ -76,8 +77,6 @@ export default async function DashboardPage() {
       chg30Pct: p30 ? (spot - p30) / p30 : null,
       chg1yValue: p1y != null ? ozt * (spot - p1y) : null,
       chg1yPct: p1y ? (spot - p1y) / p1y : null,
-      gain: h.paid != null ? value - h.paid : null,
-      gainPct: h.paid ? (value - h.paid) / h.paid : null,
     };
   });
 
@@ -151,6 +150,7 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       email={user.email ?? ""}
+      displayName={profile?.displayName ?? ""}
       rows={rows}
       history={history}
       composition={composition}

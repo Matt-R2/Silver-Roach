@@ -5,14 +5,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#131619",
-        panel: "#1B1F24",
-        raised: "#21262D",
-        line: "#2C333B",
-        hair: "#242A31",
-        ink: "#ECEFF2",
-        muted: "#8A929C",
-        dim: "#5C646E",
+        bg: "var(--color-bg)",
+        panel: "var(--color-panel)",
+        raised: "var(--color-raised)",
+        line: "var(--color-line)",
+        hair: "var(--color-hair)",
+        ink: "var(--color-ink)",
+        muted: "var(--color-muted)",
+        dim: "var(--color-dim)",
         up: "#4FB286",
         down: "#D9685E",
         au: "#CBA135",
