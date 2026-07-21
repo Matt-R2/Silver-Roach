@@ -132,7 +132,7 @@ export default function DashboardClient({
         }
         const value = latestDayInMonth ? (byDay.get(latestDayInMonth) as number) : 0;
         const label = `${d.toLocaleDateString("en-US", { month: "short" })} '${String(d.getUTCFullYear()).slice(2)}`;
-        out.push({ date: label, full: label, value: Math.round(value) });
+        out.push({ date: label, full: label, value });
       }
       return out;
     }
@@ -145,11 +145,34 @@ export default function DashboardClient({
       out.push({
         date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         full: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        value: Math.round(byDay.get(day) ?? 0),
+        value: byDay.get(day) ?? 0,
       });
     }
     return out;
   }, [history, timeframe]);
+
+  // "Nice" axis ticks (1/2/5/10 × 10^n steps) so the y-axis lands on round
+  // dollar amounts (e.g. $0/$5k/$10k) regardless of the data's exact cents,
+  // instead of Recharts' default ticks which follow the raw data domain.
+  const yTicks = useMemo(() => {
+    const max = chartData.reduce((m, d) => Math.max(m, d.value), 0);
+    if (max <= 0) return [0, 1];
+    const roughStep = max / 4;
+    const exponent = Math.floor(Math.log10(roughStep));
+    const fraction = roughStep / 10 ** exponent;
+    const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+    const step = niceFraction * 10 ** exponent;
+    const niceMax = Math.ceil(max / step) * step;
+    const ticks: number[] = [];
+    for (let v = 0; v <= niceMax + step / 2; v += step) ticks.push(Math.round(v));
+    return ticks;
+  }, [chartData]);
+
+  const formatAxisDollar = (v: number) => {
+    if (v === 0) return "$0";
+    if (v >= 1000) return `$${v % 1000 === 0 ? v / 1000 : num(v / 1000, 1)}k`;
+    return `$${v}`;
+  };
 
   return (
     <main className="mx-auto max-w-5xl px-5 sm:px-8 py-7 pb-16">
@@ -287,7 +310,9 @@ export default function DashboardClient({
                   tickLine={false}
                   axisLine={false}
                   width={56}
-                  tickFormatter={(v) => `$${num(v / 1000, 1)}k`}
+                  domain={[0, yTicks[yTicks.length - 1]]}
+                  ticks={yTicks}
+                  tickFormatter={formatAxisDollar}
                 />
                 <Tooltip
                   contentStyle={{ background: "var(--color-panel)", border: "1px solid var(--color-line)", borderRadius: 10, fontFamily: "var(--font-mono)" }}
