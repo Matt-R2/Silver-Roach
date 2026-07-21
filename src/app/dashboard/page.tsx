@@ -96,40 +96,28 @@ export default async function DashboardPage() {
     pricesByDay.set(day, bucket);
   }
 
-  const dailyPoints: SnapshotPoint[] = Array.from(pricesByDay.entries())
+  // Today's bucket always tracks the live spot cache rather than the once-
+  // daily snapshot, so the chart's "today" point updates every time
+  // /api/cron/refresh-prices refreshes prices (~every 90 min) instead of
+  // waiting for the nightly snapshot job. This still yields one point per
+  // day, never hour-by-hour.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  if (heldSymbols.length > 0 && heldSymbols.every((s) => (spots[s] ?? 0) > 0)) {
+    pricesByDay.set(todayKey, Object.fromEntries(heldSymbols.map((s) => [s, spots[s] as number])));
+  }
+
+  // Stamp every day at noon UTC, not midnight. Midnight UTC lands in the
+  // previous local calendar day for the whole western hemisphere once the
+  // client formats it in local time (e.g. toLocaleDateString), which made
+  // "today" silently render as "yesterday" for most of the day. Noon UTC
+  // stays on the correct calendar date for any real-world timezone.
+  const history: SnapshotPoint[] = Array.from(pricesByDay.entries())
     .filter(([, prices]) => heldSymbols.length > 0 && heldSymbols.every((s) => prices[s] != null))
     .map(([day, prices]) => ({
-      t: new Date(`${day}T00:00:00.000Z`).toISOString(),
+      t: new Date(`${day}T12:00:00.000Z`).toISOString(),
       value: heldSymbols.reduce((sum, s) => sum + weightBySymbol[s] * prices[s], 0),
     }))
     .sort((a, b) => a.t.localeCompare(b.t));
-
-  // Bootstrap a couple of anchor points from the 30d/1y change-point cache so
-  // the chart isn't empty while daily history accumulates. Only used to fill
-  // in *before* real daily history starts.
-  const bootstrap: SnapshotPoint[] = [];
-  if (heldSymbols.length > 0 && heldSymbols.every((s) => pointsBySymbol[s]?.p1y != null)) {
-    const t = new Date();
-    t.setUTCFullYear(t.getUTCFullYear() - 1);
-    bootstrap.push({
-      t: t.toISOString(),
-      value: heldSymbols.reduce((sum, s) => sum + weightBySymbol[s] * (pointsBySymbol[s].p1y as number), 0),
-    });
-  }
-  if (heldSymbols.length > 0 && heldSymbols.every((s) => pointsBySymbol[s]?.p30 != null)) {
-    const t = new Date();
-    t.setUTCDate(t.getUTCDate() - 30);
-    bootstrap.push({
-      t: t.toISOString(),
-      value: heldSymbols.reduce((sum, s) => sum + weightBySymbol[s] * (pointsBySymbol[s].p30 as number), 0),
-    });
-  }
-
-  const earliestDaily = dailyPoints[0]?.t;
-  const history: SnapshotPoint[] = [
-    ...bootstrap.filter((b) => !earliestDaily || b.t < earliestDaily),
-    ...dailyPoints,
-  ].sort((a, b) => a.t.localeCompare(b.t));
 
   const compositionMap = new Map<string, number>();
   for (const r of rows) {

@@ -40,6 +40,17 @@ export type Row = {
 };
 
 export type SnapshotPoint = { t: string; value: number };
+type Timeframe = "7d" | "1m" | "1y";
+
+function dayKeyUTC(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function addDaysUTC(day: string, delta: number) {
+  const d = new Date(`${day}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return dayKeyUTC(d);
+}
 export type CompositionSlice = { symbol: string; value: number };
 export type WeightSlice = { symbol: string; ozt: number };
 type Ticker = { symbol: string; spot: number | null };
@@ -74,6 +85,7 @@ export default function DashboardClient({
   pricesUpdatedAt: string | null;
 }) {
   const [adding, setAdding] = useState(false);
+  const [timeframe, setTimeframe] = useState<Timeframe>("1m");
 
   // Computed client-side only: toLocaleTimeString/toLocaleDateString resolve
   // against the server's timezone during SSR (Vercel runs in UTC), which
@@ -99,14 +111,45 @@ export default function DashboardClient({
     };
   }, [rows]);
 
-  const chartData = useMemo(
-    () =>
-      history.map((p) => ({
-        date: new Date(p.t).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        value: Math.round(p.value),
-      })),
-    [history]
-  );
+  // Windowed + zero-filled: each timeframe always renders its full width (7
+  // days, 30 days, or 12 months), even where there's no price history yet —
+  // missing days/months show as $0 rather than being skipped. Windows are
+  // anchored to the last real/live point in `history` (not `new Date()`) so
+  // server and client agree without waiting for a post-hydration effect.
+  const chartData = useMemo(() => {
+    const byDay = new Map(history.map((p) => [p.t.slice(0, 10), p.value]));
+    const referenceDay = history.length ? history[history.length - 1].t.slice(0, 10) : dayKeyUTC(new Date());
+
+    if (timeframe === "1y") {
+      const [refY, refM] = referenceDay.split("-").map(Number);
+      const out: { date: string; full: string; value: number }[] = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(Date.UTC(refY, refM - 1 - i, 1));
+        const prefix = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+        let latestDayInMonth: string | null = null;
+        for (const day of byDay.keys()) {
+          if (day.startsWith(prefix) && (!latestDayInMonth || day > latestDayInMonth)) latestDayInMonth = day;
+        }
+        const value = latestDayInMonth ? (byDay.get(latestDayInMonth) as number) : 0;
+        const label = `${d.toLocaleDateString("en-US", { month: "short" })} '${String(d.getUTCFullYear()).slice(2)}`;
+        out.push({ date: label, full: label, value: Math.round(value) });
+      }
+      return out;
+    }
+
+    const days = timeframe === "7d" ? 7 : 30;
+    const out: { date: string; full: string; value: number }[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const day = addDaysUTC(referenceDay, -i);
+      const d = new Date(`${day}T12:00:00.000Z`);
+      out.push({
+        date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        full: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        value: Math.round(byDay.get(day) ?? 0),
+      });
+    }
+    return out;
+  }, [history, timeframe]);
 
   return (
     <main className="mx-auto max-w-5xl px-5 sm:px-8 py-7 pb-16">
@@ -203,8 +246,30 @@ export default function DashboardClient({
 
       {/* Value over time */}
       <section className="rounded-2xl border border-hair bg-panel p-5 mb-7">
-        <div className="text-[11px] uppercase tracking-[0.12em] text-dim mb-4">Your holdings, valued over time</div>
-        {chartData.length >= 2 ? (
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-dim">Your holdings, valued over time</div>
+          <div className="flex gap-1 rounded-full border border-hair p-0.5">
+            {(
+              [
+                ["7d", "7D"],
+                ["1m", "1M"],
+                ["1y", "1Y"],
+              ] as [Timeframe, string][]
+            ).map(([tf, label]) => (
+              <button
+                key={tf}
+                type="button"
+                onClick={() => setTimeframe(tf)}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-mono transition-colors ${
+                  timeframe === tf ? "bg-ink text-bg" : "text-muted hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {history.length > 0 ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
@@ -227,6 +292,9 @@ export default function DashboardClient({
                 <Tooltip
                   contentStyle={{ background: "var(--color-panel)", border: "1px solid var(--color-line)", borderRadius: 10, fontFamily: "var(--font-mono)" }}
                   labelStyle={{ color: "var(--color-muted)" }}
+                  labelFormatter={(label: string, payload) =>
+                    payload && payload[0] ? (payload[0].payload as { full: string }).full : label
+                  }
                   formatter={(v: number) => [usd(v), "Value"]}
                 />
                 <Area type="monotone" dataKey="value" stroke="#4FB286" strokeWidth={2} fill="url(#pv)" />
