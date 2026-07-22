@@ -2,10 +2,12 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { signIn, signUp } from "./actions";
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState<"signin" | "signup">(searchParams.get("mode") === "signup" ? "signup" : "signin");
   const action = mode === "signin" ? signIn : signUp;
   const [state, formAction, pending] = useActionState<
     { error?: string; message?: string } | null,
