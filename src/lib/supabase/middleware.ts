@@ -33,7 +33,8 @@ export async function updateSession(request: NextRequest) {
     pathname === "/" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
-    pathname.startsWith("/forgot-password");
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/demo");
 
   // Not signed in and trying to reach a protected page -> send to login.
   if (!user && !isPublicRoute) {

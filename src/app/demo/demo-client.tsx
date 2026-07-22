@@ -14,12 +14,10 @@ import {
 } from "recharts";
 import { METALS } from "@/lib/metals-meta";
 import { usd, num } from "@/lib/units";
-import { addHolding, deleteHolding, updateHolding, renameHolding } from "./actions";
-import { signOut } from "../login/actions";
-import { Chip, Delta, CompositionCard, HoldingCard, AddForm } from "./holdings-ui";
-import type { Row, SnapshotPoint, CompositionSlice, WeightSlice } from "@/lib/portfolio";
+import { readHoldingFields } from "@/lib/holding-fields";
+import { computePortfolio, type HoldingInput, type PriceData } from "@/lib/portfolio";
+import { Chip, Delta, CompositionCard, HoldingCard, AddForm } from "../dashboard/holdings-ui";
 
-export type { Row, SnapshotPoint, CompositionSlice, WeightSlice };
 type Timeframe = "7d" | "1m" | "1y";
 
 function dayKeyUTC(d: Date) {
@@ -31,35 +29,69 @@ function addDaysUTC(day: string, delta: number) {
   d.setUTCDate(d.getUTCDate() + delta);
   return dayKeyUTC(d);
 }
+
 type Ticker = { symbol: string; spot: number | null };
 
-export default function DashboardClient({
-  email,
-  displayName,
-  rows,
-  history,
-  composition,
-  weightComposition,
+let demoIdCounter = 0;
+function nextDemoId() {
+  demoIdCounter += 1;
+  return `demo-new-${demoIdCounter}`;
+}
+
+export default function DemoClient({
+  initialHoldings,
+  priceData,
   ticker,
   pricesUpdatedAt,
 }: {
-  email: string;
-  displayName: string;
-  rows: Row[];
-  history: SnapshotPoint[];
-  composition: CompositionSlice[];
-  weightComposition: WeightSlice[];
+  initialHoldings: HoldingInput[];
+  priceData: PriceData;
   ticker: Ticker[];
   pricesUpdatedAt: string | null;
 }) {
+  const [holdings, setHoldings] = useState<HoldingInput[]>(initialHoldings);
   const [adding, setAdding] = useState(false);
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
 
-  // Computed client-side only: toLocaleTimeString/toLocaleDateString resolve
-  // against the server's timezone during SSR (Vercel runs in UTC), which
-  // doesn't match the visitor's local time. Deferring to an effect means the
-  // first client render matches the server-rendered markup exactly, then
-  // this fills in with the correct local time right after.
+  // Nothing here ever touches Prisma — every mutation just rewrites local
+  // state, so the whole portfolio is recomputed the same way the server
+  // does for the real dashboard (see src/lib/portfolio.ts), both on the
+  // initial server render and after every local edit.
+  const {
+    rows: displayRows,
+    history: displayHistory,
+    composition: displayComposition,
+    weightComposition: displayWeightComposition,
+  } = useMemo(() => computePortfolio(holdings, priceData), [holdings, priceData]);
+
+  const onAdd = (fd: FormData) => {
+    try {
+      const fields = readHoldingFields(fd);
+      setHoldings((h) => [...h, { id: nextDemoId(), nickname: null, ...fields }]);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Couldn't add that holding");
+    }
+  };
+  const onUpdate = (fd: FormData) => {
+    try {
+      const id = String(fd.get("id") || "");
+      const fields = readHoldingFields(fd);
+      setHoldings((h) => h.map((x) => (x.id === id ? { ...x, ...fields } : x)));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Couldn't save that holding");
+    }
+  };
+  const onDelete = (fd: FormData) => {
+    const id = String(fd.get("id") || "");
+    setHoldings((h) => h.filter((x) => x.id !== id));
+  };
+  const onRename = (fd: FormData) => {
+    const id = String(fd.get("id") || "");
+    const raw = String(fd.get("nickname") || "").trim();
+    const nickname = raw ? raw.slice(0, 40) : null;
+    setHoldings((h) => h.map((x) => (x.id === id ? { ...x, nickname } : x)));
+  };
+
   const [updatedAtLabel, setUpdatedAtLabel] = useState<string | null>(null);
   useEffect(() => {
     if (!pricesUpdatedAt) return;
@@ -70,23 +102,18 @@ export default function DashboardClient({
   }, [pricesUpdatedAt]);
 
   const totals = useMemo(() => {
-    const value = rows.reduce((a, r) => a + r.value, 0);
-    const chg30 = rows.reduce((a, r) => a + (r.chg30Value ?? 0), 0);
+    const value = displayRows.reduce((a, r) => a + r.value, 0);
+    const chg30 = displayRows.reduce((a, r) => a + (r.chg30Value ?? 0), 0);
     return {
       value,
       chg30,
       chg30Pct: value - chg30 ? chg30 / (value - chg30) : 0,
     };
-  }, [rows]);
+  }, [displayRows]);
 
-  // Windowed + zero-filled: each timeframe always renders its full width (7
-  // days, 30 days, or 12 months), even where there's no price history yet —
-  // missing days/months show as $0 rather than being skipped. Windows are
-  // anchored to the last real/live point in `history` (not `new Date()`) so
-  // server and client agree without waiting for a post-hydration effect.
   const chartData = useMemo(() => {
-    const byDay = new Map(history.map((p) => [p.t.slice(0, 10), p.value]));
-    const referenceDay = history.length ? history[history.length - 1].t.slice(0, 10) : dayKeyUTC(new Date());
+    const byDay = new Map(displayHistory.map((p) => [p.t.slice(0, 10), p.value]));
+    const referenceDay = displayHistory.length ? displayHistory[displayHistory.length - 1].t.slice(0, 10) : dayKeyUTC(new Date());
 
     if (timeframe === "1y") {
       const [refY, refM] = referenceDay.split("-").map(Number);
@@ -117,11 +144,8 @@ export default function DashboardClient({
       });
     }
     return out;
-  }, [history, timeframe]);
+  }, [displayHistory, timeframe]);
 
-  // "Nice" axis ticks (1/2/5/10 × 10^n steps) so the y-axis lands on round
-  // dollar amounts (e.g. $0/$5k/$10k) regardless of the data's exact cents,
-  // instead of Recharts' default ticks which follow the raw data domain.
   const yTicks = useMemo(() => {
     const max = chartData.reduce((m, d) => Math.max(m, d.value), 0);
     if (max <= 0) return [0, 1];
@@ -164,9 +188,6 @@ export default function DashboardClient({
           border-color: #4FB286; outline: none;
           box-shadow: 0 0 0 3px rgba(79, 178, 134, 0.28);
         }
-
-        /* Note starts as a single line like the Label pill, then opens into a
-           small rounded box while focused so there's room to write more. */
         textarea.ms-pill-input {
           resize: none; line-height: 1.4; overflow-y: hidden;
         }
@@ -181,20 +202,38 @@ export default function DashboardClient({
         textarea.ms-pill-input::-webkit-scrollbar-thumb { background: var(--color-pill-border); border-radius: 999px; }
         textarea.ms-pill-input::-webkit-scrollbar-thumb:hover { background: #4FB286; }
       `}</style>
+
+      {/* Demo banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-raised px-5 py-3.5 mb-6">
+        <p className="text-sm text-muted">
+          You&apos;re trying the live demo — nothing you do here is saved, and it resets when you leave.
+        </p>
+        <Link
+          href="/login?mode=signup"
+          className="whitespace-nowrap rounded-lg bg-ink px-3.5 py-2 text-[13px] font-semibold text-bg hover:opacity-90"
+        >
+          Create free account
+        </Link>
+      </div>
+
       <header className="flex items-baseline justify-between gap-4 flex-wrap mb-6">
         <div className="flex items-baseline gap-4 flex-wrap">
           <div className="font-display text-2xl font-bold tracking-[0.14em]">
             SILVERROACH<span className="text-up">.</span>
           </div>
-          <span className="text-sm text-muted">{displayName || email}</span>
+          <span className="text-sm text-muted">Demo</span>
         </div>
         <div className="flex items-center gap-4">
-          <Link href="/profile" className="text-muted hover:text-ink" aria-label="Profile settings">
+          <span
+            aria-disabled="true"
+            title="Not available in the demo"
+            className="text-dim opacity-40 cursor-not-allowed"
+          >
             <Settings size={16} />
+          </span>
+          <Link href="/" className="text-sm text-muted hover:text-ink">
+            Exit demo
           </Link>
-          <form action={signOut}>
-            <button className="text-sm text-muted hover:text-ink">Sign out</button>
-          </form>
         </div>
       </header>
 
@@ -260,7 +299,7 @@ export default function DashboardClient({
             ))}
           </div>
         </div>
-        {history.length > 0 ? (
+        {displayHistory.length > 0 ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
@@ -297,7 +336,7 @@ export default function DashboardClient({
         ) : (
           <p className="text-sm text-muted py-10 text-center">
             This chart prices your current holdings against each day&apos;s metal prices, so it fills in as price
-            history accumulates. Trigger the price job once (see README) or wait for the scheduled run.
+            history accumulates.
           </p>
         )}
       </section>
@@ -306,13 +345,13 @@ export default function DashboardClient({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-7">
         <CompositionCard
           title="Composition by worth"
-          slices={composition.map((c) => ({ symbol: c.symbol, amount: c.value }))}
+          slices={displayComposition.map((c) => ({ symbol: c.symbol, amount: c.value }))}
           formatTooltip={(v) => usd(v)}
           formatAmount={(v, total) => `${total ? num((v / total) * 100, 1) : "0.0"}%`}
         />
         <CompositionCard
           title="Composition by weight"
-          slices={weightComposition.map((w) => ({ symbol: w.symbol, amount: w.ozt }))}
+          slices={displayWeightComposition.map((w) => ({ symbol: w.symbol, amount: w.ozt }))}
           formatTooltip={(v) => `${num(v, 3)} troy oz fine`}
           formatAmount={(v) => `${num(v, 3)} oz`}
         />
@@ -332,9 +371,9 @@ export default function DashboardClient({
           )}
         </div>
 
-        {adding && <AddForm onAdd={addHolding} onClose={() => setAdding(false)} />}
+        {adding && <AddForm onAdd={onAdd} onClose={() => setAdding(false)} />}
 
-        {rows.length === 0 && !adding && (
+        {displayRows.length === 0 && !adding && (
           <div className="text-center text-muted py-10 flex flex-col items-center gap-3.5">
             <p>No metals tracked yet.</p>
             <button
@@ -347,14 +386,14 @@ export default function DashboardClient({
         )}
 
         <div className="flex flex-col gap-3">
-          {rows.map((r) => (
-            <HoldingCard key={r.id} row={r} onUpdate={updateHolding} onDelete={deleteHolding} onRename={renameHolding} />
+          {displayRows.map((r) => (
+            <HoldingCard key={r.id} row={r} onUpdate={onUpdate} onDelete={onDelete} onRename={onRename} />
           ))}
         </div>
       </section>
 
       <footer className="mt-8 text-xs text-dim leading-relaxed">
-        Spot prices via Metal Sentinel (Kitco), quoted per troy ounce. Not investment advice.
+        Spot prices via Metal Sentinel (Kitco), quoted per troy ounce. Not investment advice. Demo data is not saved.
       </footer>
     </main>
   );

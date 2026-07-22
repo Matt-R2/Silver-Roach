@@ -211,10 +211,16 @@ export default function LandingPage() {
             >
               Create free account
             </Link>
-            <Link href="/login" className="text-sm text-muted hover:text-ink">
-              Already have an account? Sign in →
+            <Link
+              href="/demo"
+              className="rounded-lg border border-line px-5 py-3 text-sm font-semibold text-ink hover:bg-raised"
+            >
+              Not convinced? Try it here
             </Link>
           </div>
+          <Link href="/login" className="mt-4 inline-block text-sm text-muted hover:text-ink">
+            Already have an account? Sign in →
+          </Link>
         </div>
         <HeroMockup />
       </section>
