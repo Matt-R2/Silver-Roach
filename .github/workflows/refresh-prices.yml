@@ -20,3 +20,14 @@ jobs:
             echo "Request failed with status $response"
             exit 1
           fi
+
+      - name: Call check-alerts endpoint
+        run: |
+          response=$(curl -s -o /tmp/alerts-response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/check-alerts")
+          cat /tmp/alerts-response.json
+          if [ "$response" -lt 200 ] || [ "$response" -ge 300 ]; then
+            echo "Request failed with status $response"
+            exit 1
+          fi

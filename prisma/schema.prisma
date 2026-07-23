@@ -54,3 +54,18 @@ model Profile {
   theme       String   @default("dark") // "dark" | "light"
   updatedAt   DateTime @updatedAt
 }
+
+model PriceAlert {
+  id             String    @id @default(uuid())
+  userId         String
+  holdingId      String? // set = watch this holding's value (weight × purity × quantity × spot); null = watch the raw spot price
+  symbol         String // AU, AG, PT, PD, RH, CU, NI, AL, PB, ZN
+  condition      String // "above" | "below"
+  targetPriceUsd Float
+  active         Boolean   @default(true) // one-shot: flips to false once the alert fires
+  triggeredAt    DateTime? // set when the alert fires; cleared on re-enable
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+  @@index([symbol, active])
+}

@@ -42,6 +42,8 @@ export async function deleteHolding(formData: FormData) {
   const id = String(formData.get("id") || "");
 
   // deleteMany with userId in the filter guarantees a user can only delete their own.
+  // Any price alert watching this holding's value is deleted too — it has nothing left to watch.
+  await prisma.priceAlert.deleteMany({ where: { holdingId: id, userId } });
   await prisma.holding.deleteMany({ where: { id, userId } });
 
   revalidatePath("/dashboard");

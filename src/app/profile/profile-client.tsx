@@ -4,31 +4,42 @@ import { useActionState, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { updateDisplayName, updateTheme, updateEmail, deleteAccount } from "./actions";
+import { Section, inputClass, labelClass } from "./section";
+import { ProfileTabs, type ProfileTab } from "./tabs";
+import { AlertsSection } from "./alerts-client";
 
 type ActionState = { error?: string; message?: string } | null;
 
-const inputClass =
-  "w-full rounded-lg border border-line bg-bg px-3 py-2.5 font-mono text-sm text-ink focus:border-up focus:outline-none";
-const labelClass = "block text-[11px] uppercase tracking-wider text-muted";
+type Alert = {
+  id: string;
+  holdingId: string | null;
+  holdingLabel: string | null;
+  symbol: string;
+  condition: string;
+  targetPriceUsd: number;
+  active: boolean;
+  triggeredAt: Date | null;
+};
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-line bg-panel p-6 space-y-4">
-      <h2 className="font-display text-sm uppercase tracking-[0.12em] text-dim">{title}</h2>
-      {children}
-    </section>
-  );
-}
+type HoldingOption = { id: string; symbol: string; label: string; currentValue: number };
 
 export default function ProfileClient({
   email,
   displayName,
   theme,
+  alerts,
+  holdingOptions,
+  spotBySymbol,
 }: {
   email: string;
   displayName: string;
   theme: "dark" | "light";
+  alerts: Alert[];
+  holdingOptions: HoldingOption[];
+  spotBySymbol: Record<string, number>;
 }) {
+  const [tab, setTab] = useState<ProfileTab>("general");
+
   return (
     <main className="mx-auto max-w-xl px-5 sm:px-8 py-7 pb-16 space-y-6">
       <div className="flex items-center gap-3">
@@ -38,19 +49,28 @@ export default function ProfileClient({
         <h1 className="font-display text-2xl font-bold tracking-[0.1em]">Profile</h1>
       </div>
 
-      <DisplayNameSection initialValue={displayName} />
-      <ThemeSection initialTheme={theme} />
-      <EmailSection currentEmail={email} />
+      <ProfileTabs active={tab} onChange={setTab} />
 
-      <Section title="Password">
-        <p className="text-sm text-muted">
-          <Link href="/update-password" className="text-up hover:underline">
-            Change your password
-          </Link>
-        </p>
-      </Section>
+      {tab === "general" && <ThemeSection initialTheme={theme} />}
 
-      <DangerZone />
+      {tab === "profile" && (
+        <>
+          <DisplayNameSection initialValue={displayName} />
+          <EmailSection currentEmail={email} />
+          <Section title="Password">
+            <p className="text-sm text-muted">
+              <Link href="/update-password" className="text-up hover:underline">
+                Change your password
+              </Link>
+            </p>
+          </Section>
+          <DangerZone />
+        </>
+      )}
+
+      {tab === "alerts" && (
+        <AlertsSection alerts={alerts} holdingOptions={holdingOptions} spotBySymbol={spotBySymbol} />
+      )}
     </main>
   );
 }
@@ -163,8 +183,7 @@ function DangerZone() {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(deleteAccount, null);
 
   return (
-    <section className="rounded-2xl border border-down/40 bg-panel p-6 space-y-4">
-      <h2 className="font-display text-sm uppercase tracking-[0.12em] text-down">Danger zone</h2>
+    <Section title="Danger zone" tone="danger">
       {!confirming ? (
         <div className="space-y-3">
           <p className="text-sm text-muted">
@@ -212,6 +231,6 @@ function DangerZone() {
           </div>
         </form>
       )}
-    </section>
+    </Section>
   );
 }

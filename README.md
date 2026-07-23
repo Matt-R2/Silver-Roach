@@ -55,6 +55,14 @@ Database → Connection string** copy both the **pooled** (port 6543) and
 Subscribe (free tier) at https://rapidapi.com/ghostsvos/api/metal-sentinel and
 copy your RapidAPI key.
 
+### 3b. Get a Resend key (for price alert emails)
+
+Sign up (free tier) at https://resend.com and copy an API key from
+**API Keys**. For local testing you can use the sandbox sender
+`onboarding@resend.dev` — it only delivers to the email address on your
+Resend account. For production, verify a sending domain and set `RESEND_FROM`
+to an address on it.
+
 ### 4. Environment
 
 ```bash
@@ -124,6 +132,14 @@ Nothing else in the app needs to change.
 
 ## Notes & next steps
 
+- **Price alerts:** users can set above/below alerts from the Price Alerts tab
+  of their profile, either on a metal's raw spot price or on a specific
+  holding's current value (weight × purity × quantity × spot, re-read fresh
+  each run so holding edits are reflected). A target that's already crossed
+  by the current price/value is rejected at creation. `/api/cron/check-alerts`
+  checks alerts right after each price refresh (same 90-minute GitHub Actions
+  job) and emails via Resend when a threshold is crossed. Alerts are one-shot
+  — they deactivate after firing and must be re-enabled to watch again.
 - **Quota:** spot responses are cached ~60s per server instance. For production
   traffic across many instances, back the cache with Redis/Upstash.
 - **Row-level security:** ownership is enforced in app code (every query filters
